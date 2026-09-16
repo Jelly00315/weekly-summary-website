@@ -211,6 +211,20 @@ async function saveCloudNow() {
   return error;
 }
 
+function showToast(message) {
+  document.querySelector('.save-toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'save-toast';
+  toast.setAttribute('role', 'status');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 220);
+  }, 1800);
+}
+
 function removeWeek(date) {
   if (cloudState && cloudState.weeks) { delete cloudState.weeks[iso(date)]; queueCloudSave(); }
   localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`);
@@ -557,7 +571,15 @@ function renderBlock(block, settings) {
 function bindWeek(date, week) {
   const persist = () => { putWeek(date, week); const status = document.querySelector('#saveStatus'); if (status) status.textContent = 'Saved just now'; };
   document.querySelector('#weekSummary').oninput = e => { week.summary = e.target.value; persist(); };
-  document.querySelector('#saveWeek').onclick = persist;
+  document.querySelector('#saveWeek').onclick = async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    putWeek(date, week);
+    const error = await saveCloudNow();
+    button.disabled = false;
+    if (error) return alert(`The update could not be saved: ${error.message}`);
+    showToast('Saved.');
+  };
   document.querySelector('#showBlockChoices').onclick = () => { const choices = document.querySelector('#blockChoices'); choices.hidden = !choices.hidden; };
   document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
     week.blocks.push(button.dataset.addType === 'ink'

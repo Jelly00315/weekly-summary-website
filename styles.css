@@ -21,3 +21,5 @@
 .toolbar .font-size-control{margin-left:0}.toolbar .font-size-input{width:54px;height:29px;padding:4px 3px 4px 7px}.toolbar .apply-font-size{padding:6px 8px}
 
 .toolbar button.active{border-color:var(--rust);background:#fff0c2;color:#713c19}
+
+.save-toast{position:fixed;left:50%;bottom:28px;z-index:1000;transform:translate(-50%,14px);padding:11px 20px;border-radius:999px;background:var(--navy);color:#fff;box-shadow:0 10px 30px #15283240;font-weight:700;font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}.save-toast.visible{opacity:1;transform:translate(-50%,0)}
