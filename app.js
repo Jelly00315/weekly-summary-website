@@ -556,10 +556,10 @@ function renderBlock(block, settings) {
         <button class="remove-block">Delete</button>
       </header>
       <div class="toolbar">
-        <button data-command="bold"><b>B</b></button>
-        <button data-command="italic"><i>I</i></button>
-        <button data-command="hiliteColor">Highlight</button>
-        <button data-command="insertUnorderedList">List</button>
+        <button type="button" data-command="bold" aria-pressed="false"><b>B</b></button>
+        <button type="button" data-command="italic" aria-pressed="false"><i>I</i></button>
+        <button type="button" data-command="hiliteColor" aria-pressed="false">Highlight</button>
+        <button type="button" data-command="insertUnorderedList" aria-pressed="false">List</button>
         <select class="font-select" aria-label="Font">${fontOptions(settings)}</select>
         <label class="font-size-control">Size <input class="font-size-input" type="number" min="6" max="144" value="17" aria-label="Font size in pixels"><button class="apply-font-size" type="button">Set</button></label>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
@@ -649,15 +649,32 @@ function bindBlock(element, week, persist) {
   editor.oninput = () => { block.html = editor.innerHTML; persist(); };
   editor.addEventListener('keyup', rememberSelection);
   editor.addEventListener('mouseup', rememberSelection);
+  editor.addEventListener('touchend', () => setTimeout(rememberSelection));
+  const rangeHasHighlight = range => {
+    const isYellow = node => {
+      if (!(node instanceof Element)) return false;
+      const color = getComputedStyle(node).backgroundColor.replace(/\s/g, '');
+      return color === 'rgb(255,240,154)' || color === 'rgba(255,240,154,1)';
+    };
+    let ancestor = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+    while (ancestor && ancestor !== editor) {
+      if (isYellow(ancestor)) return true;
+      ancestor = ancestor.parentElement;
+    }
+    return [...editor.querySelectorAll('*')].some(node => {
+      try { return range.intersectsNode(node) && isYellow(node); } catch { return false; }
+    });
+  };
   element.querySelectorAll('[data-command]').forEach(button => {
+    button.onpointerdown = rememberSelection;
     button.onmousedown = event => event.preventDefault();
     button.onclick = () => {
       restoreSelection();
       const command = button.dataset.command;
       let active;
       if (command === 'hiliteColor') {
-        const current = String(document.queryCommandValue('hiliteColor') || '').toLowerCase().replace(/\s/g, '');
-        active = current === '#fff09a' || current === 'rgb(255,240,154)' || current === 'rgba(255,240,154,1)';
+        const selection = window.getSelection();
+        active = selection.rangeCount ? rangeHasHighlight(selection.getRangeAt(0)) : false;
         document.execCommand('hiliteColor', false, active ? 'transparent' : '#fff09a');
         active = !active;
       } else {
