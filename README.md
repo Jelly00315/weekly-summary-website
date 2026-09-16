@@ -6,6 +6,12 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
+- Year-inclusive weekly labels, for example `2026 | 9.14 - 9.20`
+- Separate private and public writing blocks for each week
+- Private/public visibility setting for handwritten notes
+- Pressure-sensitive stylus handwriting through Pointer Events
+- Public-only Markdown export
+
 - Month calendar with day, month, and year navigation
 - Monday–Sunday week list, shown as date ranges such as `Sep 14–Sep 20`
 - One-sentence weekly summary
