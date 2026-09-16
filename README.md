@@ -1,6 +1,6 @@
-# Week Notes
+# JeWeekSummary
 
-A private weekly-summary journal that runs entirely in your browser.
+A private weekly-summary journal that runs entirely in your browser. Its desktop home is a book-like table of contents: years are chapters and weeks are entries that open into their own writing view.
 
 Open `index.html` in a modern browser. Your summaries, entries, and handwritten drawings are saved locally on that device. Use **Export .md** to download a text copy of the current week.
 
