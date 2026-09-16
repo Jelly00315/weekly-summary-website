@@ -1,6 +1,13 @@
 const app = document.querySelector('#app');
 const SETTINGS_KEY = 'je-week-summary-settings-v2';
 const WEEK_PREFIX = 'week-notes:';
+const SUPABASE_URL = 'https://zfzwdmcrqiylxjuycpmp.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_NbhL62YORIdN-hJawvsj2w_meoP2iPq';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let cloudState = null;
+let currentUser = null;
+let saveTimer = null;
+let activeShare = null;
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const iso = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
@@ -8,6 +15,15 @@ const addDays = (d, amount) => { const next = new Date(d); next.setDate(next.get
 const monday = d => { const next = new Date(d); next.setHours(0, 0, 0, 0); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return next; };
 const weekLabel = d => `${d.getMonth() + 1}.${d.getDate()} - ${addDays(d, 6).getMonth() + 1}.${addDays(d, 6).getDate()}`;
 const escapeHtml = (value = '') => value.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function safeRichHtml(value = '') {
+  const template = document.createElement('template');
+  template.innerHTML = value;
+  template.content.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach(node => node.remove());
+  template.content.querySelectorAll('*').forEach(node => [...node.attributes].forEach(attribute => {
+    if (attribute.name.toLowerCase().startsWith('on') || /javascript:/i.test(attribute.value)) node.removeAttribute(attribute.name);
+  }));
+  return template.innerHTML;
+}
 
 function defaultSettings() {
   const year = new Date().getFullYear();
@@ -23,11 +39,13 @@ function defaultSettings() {
 }
 
 function getSettings() {
+  if (cloudState) return { ...defaultSettings(), ...(cloudState.settings || {}) };
   try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return defaultSettings(); }
 }
 
 function putSettings(settings) {
+  if (cloudState) { cloudState.settings = settings; queueCloudSave(); }
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
   catch { alert('This browser could not save that setting. Uploaded font files may be too large.'); }
 }
@@ -40,6 +58,7 @@ function defaultBlocks() {
 }
 
 function getWeek(date) {
+  if (cloudState) return cloudState.weeks && cloudState.weeks[iso(date)] ? cloudState.weeks[iso(date)] : { summary: '', blocks: defaultBlocks() };
   try {
     const old = JSON.parse(localStorage.getItem(`${WEEK_PREFIX}${iso(date)}`) || '{}');
     if (Array.isArray(old.blocks)) return { summary: '', ...old };
@@ -52,8 +71,49 @@ function getWeek(date) {
 }
 
 function putWeek(date, value) {
+  if (cloudState) { cloudState.weeks = cloudState.weeks || {}; cloudState.weeks[iso(date)] = value; queueCloudSave(); }
   try { localStorage.setItem(`${WEEK_PREFIX}${iso(date)}`, JSON.stringify(value)); }
   catch { alert('This week could not be saved. Try removing a large handwriting block.'); }
+}
+
+function collectLocalState() {
+  const state = { settings: getSettings(), weeks: {} };
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key || !key.startsWith(WEEK_PREFIX)) continue;
+    try { state.weeks[key.slice(WEEK_PREFIX.length)] = JSON.parse(localStorage.getItem(key)); } catch { /* ignore invalid legacy data */ }
+  }
+  return state;
+}
+
+async function loadCloudState() {
+  const { data, error } = await db.from('notebooks').select('content').eq('user_id', currentUser.id).maybeSingle();
+  if (error) throw error;
+  if (data && data.content) cloudState = data.content;
+  else {
+    cloudState = collectLocalState();
+    const { error: insertError } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState });
+    if (insertError) throw insertError;
+  }
+  cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
+  cloudState.weeks = cloudState.weeks || {};
+}
+
+function queueCloudSave() {
+  if (!cloudState || !currentUser) return;
+  clearTimeout(saveTimer);
+  const status = document.querySelector('#saveStatus');
+  if (status) status.textContent = 'Saving...';
+  saveTimer = setTimeout(async () => {
+    const { error } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState, updated_at: new Date().toISOString() });
+    const nextStatus = document.querySelector('#saveStatus');
+    if (nextStatus) nextStatus.textContent = error ? 'Cloud save failed' : 'Saved to cloud';
+  }, 550);
+}
+
+function removeWeek(date) {
+  if (cloudState && cloudState.weeks) { delete cloudState.weeks[iso(date)]; queueCloudSave(); }
+  localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`);
 }
 
 function weeksIn(year) {
@@ -87,6 +147,7 @@ function renderHome() {
       <header class="masthead">
         <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
         <span class="edition">Research weekly update</span>
+        <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><button id="shareNotebook">Share</button><button id="logout">Log out</button></div>
         <div class="paper-control">
           <label>Paper <input id="backgroundColor" type="color" value="${settings.background}"></label>
           <div class="color-history" aria-label="Previous background colors">
@@ -110,6 +171,8 @@ function renderHome() {
   document.querySelector('#backgroundColor').onchange = e => selectBackground(e.target.value);
   document.querySelectorAll('.color-chip').forEach(button => button.onclick = () => selectBackground(button.dataset.color));
   document.querySelector('#addYear').onclick = addYear;
+  document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
+  document.querySelector('#shareNotebook').onclick = openShareDialog;
   document.querySelectorAll('[data-delete-year]').forEach(button => button.onclick = () => deleteYear(Number(button.dataset.deleteYear)));
   document.querySelectorAll('[data-week]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.week}`; });
 }
@@ -157,7 +220,7 @@ function addYear() {
 
 function deleteYear(year) {
   if (!confirm(`Delete ${year} and every saved week inside it? This cannot be undone.`)) return;
-  weeksIn(year).forEach(date => localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`));
+  weeksIn(year).forEach(removeWeek);
   const settings = getSettings();
   settings.years = settings.years.filter(item => item !== year);
   putSettings(settings);
@@ -174,7 +237,7 @@ function renderWeek(date) {
       <header class="notebook-nav">
         <a href="./" class="back">&#8592; Contents</a>
         <a class="wordmark small" href="./">Je<span>Week</span>Summary</a>
-        <span id="saveStatus">Saved locally</span>
+        <span id="saveStatus">Saved to cloud</span>
       </header>
       <section class="week-heading">
         <p class="kicker">Research weekly update / ${date.getFullYear()}</p>
@@ -243,7 +306,7 @@ function bindWeek(date, week) {
   });
   document.querySelector('#deleteWeek').onclick = () => {
     if (!confirm(`Delete the entire week ${weekLabel(date)}? This cannot be undone.`)) return;
-    localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`);
+    removeWeek(date);
     location.href = './';
   };
   document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
@@ -316,6 +379,79 @@ function setupCanvas(canvas, block, persist) {
   canvas.onpointerup = () => { active = false; block.drawing = canvas.toDataURL(); persist(); };
 }
 
+async function openShareDialog() {
+  let { data, error } = await db.from('share_links').select('token, enabled').eq('user_id', currentUser.id).maybeSingle();
+  if (error) return alert(`Could not create a sharing link: ${error.message}`);
+  if (!data) {
+    const bytes = crypto.getRandomValues(new Uint8Array(18));
+    const token = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    const result = await db.from('share_links').insert({ user_id: currentUser.id, token, enabled: true }).select('token, enabled').single();
+    if (result.error) return alert(`Could not create a sharing link: ${result.error.message}`);
+    data = result.data;
+  } else if (!data.enabled) {
+    const result = await db.from('share_links').update({ enabled: true }).eq('user_id', currentUser.id).select('token, enabled').single();
+    if (result.error) return alert(`Could not enable sharing: ${result.error.message}`);
+    data = result.data;
+  }
+  const url = `${location.origin}${location.pathname}?share=${data.token}`;
+  try { await navigator.clipboard.writeText(url); } catch { /* the prompt still exposes the URL */ }
+  const answer = prompt('Read-only sharing is ON. The link was copied. Type DISABLE to revoke it, or close this box to keep sharing:', url);
+  if (answer === 'DISABLE') {
+    await db.from('share_links').update({ enabled: false }).eq('user_id', currentUser.id);
+    alert('Read-only sharing is now disabled.');
+  }
+}
+
+function renderWelcome(message = '') {
+  app.className = '';
+  app.innerHTML = `
+    <main class="welcome">
+      <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
+      <section>
+        <p class="kicker">Research weekly notebook</p>
+        <h1>Keep the work.<br>Plan what comes next.</h1>
+        <p>Sign in to open your synchronized notebook on any phone or computer. A read-only sharing link opens a published notebook without an account.</p>
+        ${message ? `<p class="welcome-error">${escapeHtml(message)}</p>` : ''}
+        <button id="googleLogin" class="google-login">Continue with Google</button>
+      </section>
+    </main>`;
+  document.querySelector('#googleLogin').onclick = async () => {
+    const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+    if (error) alert(error.message);
+  };
+}
+
+function renderSharedHome(token) {
+  const settings = getSettings();
+  applyFont(settings);
+  const years = [...new Set(settings.years)].sort((a, b) => b - a);
+  app.className = '';
+  app.innerHTML = `
+    <main class="book shared-book">
+      <header class="masthead"><a class="wordmark" href="./">Je<span>Week</span>Summary</a><span class="edition">Read-only shared notebook</span></header>
+      <section class="cover"><p class="kicker">Published research record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
+      <section class="contents">${years.map((year, yearIndex) => `
+        <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(yearIndex + 1).padStart(2, '0')}</span><h2>${year}</h2></header>
+        <div class="chapters">${weeksIn(year).map((date, index) => { const week = getWeek(date); return `<button class="chapter" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Read</span></button>`; }).join('')}</div></section>`).join('')}</section>
+    </main>`;
+  document.querySelectorAll('[data-shared-week]').forEach(button => button.onclick = () => { location.href = `?share=${token}&week=${button.dataset.sharedWeek}`; });
+}
+
+function renderSharedWeek(date, token) {
+  const settings = getSettings();
+  const week = getWeek(date);
+  applyFont(settings);
+  app.className = '';
+  app.innerHTML = `
+    <main class="notebook shared-notebook">
+      <header class="notebook-nav"><a href="?share=${token}" class="back">&#8592; Shared contents</a><span class="edition">Read only</span></header>
+      <section class="week-heading"><p class="kicker">Published research update / ${date.getFullYear()}</p><h1>${weekLabel(date)}</h1><p class="shared-summary">${escapeHtml(week.summary || 'Untitled research week')}</p></section>
+      <section class="blocks">${week.blocks.map(block => block.type === 'ink'
+        ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten notes')}</h2>${block.drawing ? `<img class="shared-ink" src="${block.drawing}" alt="Handwritten notes">` : '<p>No handwriting added.</p>'}</article>`
+        : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Research notes')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
+    </main>`;
+}
+
 function uploadFont(event, date) {
   const file = event.target.files[0];
   if (!file) return;
@@ -331,6 +467,32 @@ function uploadFont(event, date) {
   reader.readAsDataURL(file);
 }
 
-const selectedWeek = new URLSearchParams(location.search).get('week');
-if (selectedWeek) renderWeek(monday(new Date(`${selectedWeek}T12:00:00`)));
-else renderHome();
+async function start() {
+  const params = new URLSearchParams(location.search);
+  const share = params.get('share');
+  const selectedWeek = params.get('week');
+  if (share) {
+    const { data, error } = await db.rpc('get_shared_notebook', { p_token: share });
+    const content = Array.isArray(data) ? data[0]?.content : data?.content;
+    if (error || !content) return renderWelcome('That sharing link is unavailable or has been revoked.');
+    cloudState = content;
+    cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
+    cloudState.weeks = cloudState.weeks || {};
+    activeShare = share;
+    if (selectedWeek) renderSharedWeek(monday(new Date(`${selectedWeek}T12:00:00`)), share);
+    else renderSharedHome(share);
+    return;
+  }
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return renderWelcome();
+  currentUser = session.user;
+  try {
+    await loadCloudState();
+    if (selectedWeek) renderWeek(monday(new Date(`${selectedWeek}T12:00:00`)));
+    else renderHome();
+  } catch (error) {
+    renderWelcome(`Cloud setup is not complete yet: ${error.message}`);
+  }
+}
+
+start();
