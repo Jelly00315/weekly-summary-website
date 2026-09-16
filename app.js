@@ -5,8 +5,8 @@ function add(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function monday(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
 function label(d){const e=add(d,6);return `${d.getFullYear()} . ${d.getMonth()+1}.${d.getDate()} - ${e.getMonth()+1}.${e.getDate()}`}
 function weekOnly(d){const e=add(d,6);return `${d.getMonth()+1}.${d.getDate()} - ${e.getMonth()+1}.${e.getDate()}`}
-function data(d){const n=JSON.parse(localStorage.getItem(key(d))||'{}');return {summary:'',privateBody:n.body||'',publicBody:'',drawing:'',drawingVisibility:'private',...n}}
-function save(d,n){localStorage.setItem(key(d),JSON.stringify(n))}
+function data(d){let n={};try{n=JSON.parse(localStorage.getItem(key(d))||'{}')}catch(error){console.warn('Local storage is unavailable; entries will not persist.',error)}return {summary:'',privateBody:n.body||'',publicBody:'',drawing:'',drawingVisibility:'private',...n}}
+function save(d,n){try{localStorage.setItem(key(d),JSON.stringify(n))}catch(error){console.warn('Could not save this entry locally.',error)}}
 function weeks(year){const first=monday(new Date(year,0,4)),out=[];for(let d=first;d.getFullYear()<=year||add(d,6).getFullYear()===year;d=add(d,7))out.push(new Date(d));return out}
 function escape(s=''){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])}
 function go(d){location.href=`?week=${iso(d)}`}
