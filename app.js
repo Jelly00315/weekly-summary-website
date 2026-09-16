@@ -244,7 +244,7 @@ function renderHome() {
       <header class="masthead">
         <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
         <span class="edition">Work weekly update</span>
-        <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><button id="shareNotebook">Share</button><button id="logout">Log out</button></div>
+        <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><button id="shareNotebook">Share</button><button id="logout">Log out</button><button id="deleteAccount" class="delete-account">Delete account</button></div>
         <div class="paper-control">
           <label>Paper <input id="backgroundColor" type="color" value="${settings.background}"></label>
           <div class="color-history" aria-label="Previous background colors">
@@ -270,6 +270,7 @@ function renderHome() {
   document.querySelectorAll('[data-delete-color]').forEach(button => button.onclick = () => deleteSavedColor(button.dataset.deleteColor));
   document.querySelector('#addYear').onclick = addYear;
   document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
+  document.querySelector('#deleteAccount').onclick = deleteAccount;
   document.querySelector('#shareNotebook').onclick = openShareDialog;
   document.querySelectorAll('[data-delete-year]').forEach(button => button.onclick = () => deleteYear(Number(button.dataset.deleteYear)));
   document.querySelectorAll('[data-add-week]').forEach(button => button.onclick = () => addWeek(Number(button.dataset.addWeek)));
@@ -315,6 +316,31 @@ function deleteSavedColor(color) {
   settings.backgroundHistory = settings.backgroundHistory.filter(item => item !== color);
   putSettings(settings);
   renderHome();
+}
+
+async function deleteAccount() {
+  const answer = prompt(`Permanently delete ${currentUser.email || 'this account'} and all of its weeks?\n\nType DELETE to confirm.`);
+  if (answer !== 'DELETE') {
+    if (answer !== null) alert('Account deletion was cancelled. You must type DELETE exactly.');
+    return;
+  }
+
+  const button = document.querySelector('#deleteAccount');
+  if (button) { button.disabled = true; button.textContent = 'Deleting...'; }
+  clearTimeout(saveTimer);
+  const { error } = await db.rpc('delete_own_account');
+  if (error) {
+    if (button) { button.disabled = false; button.textContent = 'Delete account'; }
+    alert(`The account could not be deleted: ${error.message}`);
+    return;
+  }
+
+  localStorage.removeItem(SETTINGS_KEY);
+  [...Array(localStorage.length)].map((_, index) => localStorage.key(index))
+    .filter(key => key && key.startsWith(WEEK_PREFIX))
+    .forEach(key => localStorage.removeItem(key));
+  await db.auth.signOut();
+  location.href = './';
 }
 
 function addYear() {

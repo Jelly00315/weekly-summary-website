@@ -1,8 +1,8 @@
 # JeWeekSummary
 
-A private weekly-summary journal that runs entirely in your browser. Its desktop home is a book-like table of contents: years are chapters and weeks are entries that open into their own writing view.
+A private, cloud-synchronized weekly work journal. Its desktop home is a book-like table of contents: years are chapters and weeks are entries that open into their own writing view.
 
-JeWeekSummary now supports Google authentication and synchronized cloud notebooks through Supabase. Run `supabase-schema.sql` once in the Supabase SQL Editor before signing in. Signed-in users own and edit only their notebook; revocable sharing links expose a separate read-only view.
+JeWeekSummary supports Google authentication and synchronized cloud notebooks through Supabase. Run the latest `supabase-schema.sql` in the Supabase SQL Editor after setup changes. Signed-in users own and edit only their notebook; revocable sharing links expose a separate read-only view.
 
 Open `index.html` in a modern browser. Your summaries, entries, and handwritten drawings are saved locally on that device. Use **Export .md** to download a text copy of the current week.
 
@@ -15,6 +15,7 @@ Features:
 - Add, rename, recolor, and safely delete individual blocks
 - Bold, italic, highlight, lists, font selection, and local font upload
 - Background color picker with the three previously selected colors
+- Permanent self-service account deletion with typed confirmation
 
 - Year-inclusive weekly labels, for example `2026 | 9.14 - 9.20`
 - Separate private and public writing blocks for each week

@@ -50,3 +50,25 @@ $$;
 
 revoke all on function public.get_shared_notebook(text) from public;
 grant execute on function public.get_shared_notebook(text) to anon, authenticated;
+
+-- Allows a signed-in user to permanently delete only their own account.
+-- The notebook and share link are removed by their ON DELETE CASCADE rules.
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  requesting_user uuid := auth.uid();
+begin
+  if requesting_user is null then
+    raise exception 'You must be signed in to delete an account.';
+  end if;
+
+  delete from auth.users where id = requesting_user;
+end;
+$$;
+
+revoke all on function public.delete_own_account() from public;
+grant execute on function public.delete_own_account() to authenticated;

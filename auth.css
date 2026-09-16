@@ -1,5 +1,7 @@
 .account-control { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); }
 .account-control button { border: 1px solid var(--line); background: var(--page); padding: 6px 9px; border-radius: 3px; font-size: 10px; }
+.account-control .delete-account { border-color: #c99086; color: #8d3025; }
+.account-control .delete-account:hover { background: #fff0ed; }
 .account-control + .paper-control { margin-left: 0; }
 .welcome { min-height: 100vh; max-width: 980px; margin: auto; padding: 32px 42px; display: flex; flex-direction: column; }
 .welcome > section { margin: auto 0; max-width: 720px; padding: 70px 0 120px; }
