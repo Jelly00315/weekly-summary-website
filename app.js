@@ -231,7 +231,7 @@ async function applyFont(settings) {
     } catch { settings.fontName = 'Times New Roman'; }
   }
   document.documentElement.style.setProperty('--paper', settings.background);
-  document.documentElement.style.setProperty('--writing-font', `'${settings.fontName}', 'Times New Roman', serif`);
+  document.documentElement.style.setProperty('--writing-font', `'${settings.fontName}', 'SimSun', '宋体', 'Times New Roman', serif`);
 }
 
 function renderHome() {
@@ -467,6 +467,20 @@ function renderWeek(date) {
   bindWeek(date, week);
 }
 
+function fontOptions(settings) {
+  const fonts = [
+    { value: settings.fontName, label: settings.fontName },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'SimSun', label: '宋体 (SimSun)' },
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Courier New', label: 'Courier New' }
+  ];
+  const seen = new Set();
+  return fonts.filter(font => font.value && !seen.has(font.value) && seen.add(font.value))
+    .map(font => `<option value="${escapeHtml(font.value)}">${escapeHtml(font.label)}</option>`).join('');
+}
+
 function renderBlock(block, settings) {
   if (block.type === 'ink') return `
     <article class="note-block ink-block" data-block="${block.id}">
@@ -488,7 +502,7 @@ function renderBlock(block, settings) {
         <button data-command="italic"><i>I</i></button>
         <button data-command="hiliteColor">Highlight</button>
         <button data-command="insertUnorderedList">List</button>
-        <select class="font-select" aria-label="Font"><option>${escapeHtml(settings.fontName)}</option><option>Times New Roman</option><option>Arial</option><option>Georgia</option><option>Courier New</option></select>
+        <select class="font-select" aria-label="Font">${fontOptions(settings)}</select>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
       </div>
       <div class="text-editor" contenteditable="true" style="color:${block.color || '#20211e'}" data-placeholder="Type your work update here...">${block.html || ''}</div>
@@ -539,15 +553,41 @@ function bindBlock(element, week, persist) {
     return;
   }
   const editor = element.querySelector('.text-editor');
-  editor.oninput = () => { block.html = editor.innerHTML; persist(); };
-  element.querySelectorAll('[data-command]').forEach(button => button.onclick = () => {
+  let savedRange = null;
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    if (selection.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) savedRange = selection.getRangeAt(0).cloneRange();
+  };
+  const restoreSelection = () => {
     editor.focus();
-    const value = button.dataset.command === 'hiliteColor' ? '#fff09a' : null;
-    document.execCommand(button.dataset.command, false, value);
-    block.html = editor.innerHTML;
-    persist();
+    if (!savedRange) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  };
+  editor.oninput = () => { block.html = editor.innerHTML; persist(); };
+  editor.addEventListener('keyup', rememberSelection);
+  editor.addEventListener('mouseup', rememberSelection);
+  element.querySelectorAll('[data-command]').forEach(button => {
+    button.onmousedown = event => event.preventDefault();
+    button.onclick = () => {
+      restoreSelection();
+      const value = button.dataset.command === 'hiliteColor' ? '#fff09a' : null;
+      document.execCommand(button.dataset.command, false, value);
+      block.html = editor.innerHTML;
+      rememberSelection();
+      persist();
+    };
   });
-  element.querySelector('.font-select').onchange = e => { editor.focus(); document.execCommand('fontName', false, e.target.value); block.html = editor.innerHTML; persist(); };
+  const fontSelect = element.querySelector('.font-select');
+  fontSelect.onmousedown = rememberSelection;
+  fontSelect.onchange = event => {
+    restoreSelection();
+    document.execCommand('fontName', false, event.target.value);
+    block.html = editor.innerHTML;
+    rememberSelection();
+    persist();
+  };
 }
 
 function setupCanvas(canvas, block, persist) {
