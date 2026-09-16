@@ -13,7 +13,8 @@ Features:
 - Weeks listed chronologically from the beginning of each year
 - OneNote-style typed and pressure-sensitive handwriting blocks
 - Add, rename, recolor, and safely delete individual blocks
-- Bold, italic, highlight, lists, working font selection (including 宋体/SimSun), and local font upload
+- Bold, italic, highlight, lists, working font selection (including 宋体/SimSun), and device-local font upload
+- Device-local CSS upload for custom week-page appearance, with external CSS requests blocked
 - Background color picker with the three previously selected colors
 - Permanent self-service account deletion with typed confirmation
 

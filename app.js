@@ -1,6 +1,8 @@
 const app = document.querySelector('#app');
 const SETTINGS_KEY = 'je-week-summary-settings-v2';
 const WEEK_PREFIX = 'week-notes:';
+const LOCAL_FONT_PREFIX = 'je-week-local-font:';
+const LOCAL_CSS_PREFIX = 'je-week-local-css:';
 const SUPABASE_URL = 'https://zfzwdmcrqiylxjuycpmp.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NbhL62YORIdN-hJawvsj2w_meoP2iPq';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -36,7 +38,6 @@ function defaultSettings() {
     weekIndex: { [String(year)]: [currentWeek] },
     highlightedWeeks: [],
     fontName: 'Times New Roman',
-    fontData: '',
     headline: 'Work, week by week.',
     intro: 'A working record of progress, results, questions, and the plan for the week ahead.'
   };
@@ -66,6 +67,19 @@ function defaultBlocks() {
   return [
     { id: uid(), type: 'text', title: 'Note', html: '', color: '#20211e' }
   ];
+}
+
+function localUserKey(prefix) {
+  return `${prefix}${currentUser ? currentUser.id : 'anonymous'}`;
+}
+
+function getLocalFont() {
+  try { return JSON.parse(localStorage.getItem(localUserKey(LOCAL_FONT_PREFIX)) || 'null'); }
+  catch { return null; }
+}
+
+function getLocalCss() {
+  return localStorage.getItem(localUserKey(LOCAL_CSS_PREFIX)) || '';
 }
 
 function normalizeWeek(value) {
@@ -130,6 +144,18 @@ async function loadCloudState() {
   cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
   cloudState.weeks = cloudState.weeks || {};
   let migratedLegacyWeeks = false;
+  if (cloudState.settings.fontData) {
+    let movedFontLocally = false;
+    try {
+      localStorage.setItem(localUserKey(LOCAL_FONT_PREFIX), JSON.stringify({ name: 'Uploaded Work Font', data: cloudState.settings.fontData }));
+      movedFontLocally = true;
+    } catch { /* leave the cloud copy available until local storage has room */ }
+    if (movedFontLocally) {
+      delete cloudState.settings.fontData;
+      cloudState.settings.fontName = 'Times New Roman';
+      migratedLegacyWeeks = true;
+    }
+  }
   const migratedWeeks = {};
   Object.entries(cloudState.weeks).forEach(([key, week]) => {
     const date = new Date(`${key}T12:00:00`);
@@ -222,19 +248,22 @@ function chapterNumber(year) {
 }
 
 async function applyFont(settings) {
-  if (settings.fontData) {
+  const localFont = getLocalFont();
+  let writingFont = settings.fontName;
+  if (localFont && localFont.data) {
     try {
-      const face = new FontFace('Uploaded Work Font', `url(${settings.fontData})`);
+      const face = new FontFace(localFont.name, `url(${localFont.data})`);
       await face.load();
       document.fonts.add(face);
-      settings.fontName = 'Uploaded Work Font';
-    } catch { settings.fontName = 'Times New Roman'; }
+      writingFont = localFont.name;
+    } catch { writingFont = settings.fontName; }
   }
   document.documentElement.style.setProperty('--paper', settings.background);
-  document.documentElement.style.setProperty('--writing-font', `'${settings.fontName}', 'SimSun', '宋体', 'Times New Roman', serif`);
+  document.documentElement.style.setProperty('--writing-font', `'${writingFont}', 'SimSun', '宋体', 'Times New Roman', serif`);
 }
 
 function renderHome() {
+  document.querySelector('#localWeekStyle')?.remove();
   const settings = getSettings();
   applyFont(settings);
   const years = [...new Set(settings.years)].sort((a, b) => b - a);
@@ -336,6 +365,8 @@ async function deleteAccount() {
   }
 
   localStorage.removeItem(SETTINGS_KEY);
+  localStorage.removeItem(localUserKey(LOCAL_FONT_PREFIX));
+  localStorage.removeItem(localUserKey(LOCAL_CSS_PREFIX));
   [...Array(localStorage.length)].map((_, index) => localStorage.key(index))
     .filter(key => key && key.startsWith(WEEK_PREFIX))
     .forEach(key => localStorage.removeItem(key));
@@ -432,6 +463,7 @@ function deleteYear(year) {
 
 function renderWeek(date) {
   const settings = getSettings();
+  const localFont = getLocalFont();
   const week = getWeek(date);
   applyFont(settings);
   app.className = '';
@@ -457,18 +489,30 @@ function renderWeek(date) {
       </section>
       <footer class="notebook-footer">
         <label class="font-upload">Writing font
-          <span>${escapeHtml(settings.fontName)}</span>
+          <span>${escapeHtml(localFont?.name || settings.fontName)}</span>
           <input id="fontUpload" type="file" accept=".ttf,.otf,.woff,.woff2,font/*">
         </label>
+        <label class="font-upload">Week page CSS
+          <span>${getLocalCss() ? 'Local style active' : 'No local style'}</span>
+          <input id="cssUpload" type="file" accept=".css,text/css">
+        </label>
+        <button id="clearCustomCss" class="danger" ${getLocalCss() ? '' : 'disabled'}>Clear CSS</button>
         <button id="deleteWeek" class="danger">Delete week</button>
         <button id="saveWeek" class="primary">Save update</button>
       </footer>
     </main>`;
+  document.querySelector('#localWeekStyle')?.remove();
+  const customStyle = document.createElement('style');
+  customStyle.id = 'localWeekStyle';
+  customStyle.textContent = getLocalCss();
+  document.head.appendChild(customStyle);
   bindWeek(date, week);
 }
 
 function fontOptions(settings) {
+  const localFont = getLocalFont();
   const fonts = [
+    { value: localFont?.name, label: localFont?.name },
     { value: settings.fontName, label: settings.fontName },
     { value: 'Times New Roman', label: 'Times New Roman' },
     { value: 'SimSun', label: '宋体 (SimSun)' },
@@ -523,6 +567,12 @@ function bindWeek(date, week) {
   });
   document.querySelector('#deleteWeek').onclick = () => deleteListedWeek(iso(date));
   document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
+  document.querySelector('#cssUpload').onchange = event => uploadWeekCss(event, date);
+  document.querySelector('#clearCustomCss').onclick = () => {
+    localStorage.removeItem(localUserKey(LOCAL_CSS_PREFIX));
+    document.querySelector('#localWeekStyle')?.remove();
+    renderWeek(date);
+  };
   document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist));
 }
 
@@ -661,6 +711,7 @@ function renderWelcome(message = '') {
 }
 
 function renderSharedHome(token) {
+  document.querySelector('#localWeekStyle')?.remove();
   const settings = getSettings();
   applyFont(settings);
   const years = [...new Set(settings.years)].sort((a, b) => b - a);
@@ -677,6 +728,7 @@ function renderSharedHome(token) {
 }
 
 function renderSharedWeek(date, token) {
+  document.querySelector('#localWeekStyle')?.remove();
   const settings = getSettings();
   const week = getWeek(date);
   applyFont(settings);
@@ -697,13 +749,30 @@ function uploadFont(event, date) {
   if (file.size > 1500000) return alert('Please choose a font smaller than 1.5 MB so it can be saved in this browser.');
   const reader = new FileReader();
   reader.onload = () => {
-    const settings = getSettings();
-    settings.fontData = reader.result;
-    settings.fontName = 'Uploaded Work Font';
-    putSettings(settings);
+    try {
+      localStorage.setItem(localUserKey(LOCAL_FONT_PREFIX), JSON.stringify({ name: 'Uploaded Work Font', data: reader.result }));
+    } catch {
+      alert('This browser could not store that font. Try a smaller font file.');
+      return;
+    }
     renderWeek(date);
   };
   reader.readAsDataURL(file);
+}
+
+function uploadWeekCss(event, date) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 100000) return alert('Please choose a CSS file smaller than 100 KB.');
+  const reader = new FileReader();
+  reader.onload = () => {
+    const css = String(reader.result || '');
+    if (/@import\b|url\s*\(/i.test(css)) return alert('For privacy, local CSS cannot use @import or url(...).');
+    try { localStorage.setItem(localUserKey(LOCAL_CSS_PREFIX), css); }
+    catch { return alert('This browser could not store that CSS file.'); }
+    renderWeek(date);
+  };
+  reader.readAsText(file);
 }
 
 async function start() {
