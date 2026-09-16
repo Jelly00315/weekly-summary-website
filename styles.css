@@ -19,3 +19,5 @@
 .eraser-toggle{border:1px solid var(--line);background:#fff;border-radius:3px;padding:6px 9px;font-size:11px}.eraser-toggle.active{border-color:var(--rust);background:#f8ded7;color:#842f24}.ink-canvas.erasing{cursor:cell}
 
 .toolbar .font-size-control{margin-left:0}.toolbar .font-size-input{width:54px;height:29px;padding:4px 3px 4px 7px}.toolbar .apply-font-size{padding:6px 8px}
+
+.toolbar button.active{border-color:var(--rust);background:#fff0c2;color:#713c19}

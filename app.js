@@ -631,8 +631,19 @@ function bindBlock(element, week, persist) {
     button.onmousedown = event => event.preventDefault();
     button.onclick = () => {
       restoreSelection();
-      const value = button.dataset.command === 'hiliteColor' ? '#fff09a' : null;
-      document.execCommand(button.dataset.command, false, value);
+      const command = button.dataset.command;
+      let active;
+      if (command === 'hiliteColor') {
+        const current = String(document.queryCommandValue('hiliteColor') || '').toLowerCase().replace(/\s/g, '');
+        active = current === '#fff09a' || current === 'rgb(255,240,154)' || current === 'rgba(255,240,154,1)';
+        document.execCommand('hiliteColor', false, active ? 'transparent' : '#fff09a');
+        active = !active;
+      } else {
+        document.execCommand(command, false, null);
+        active = document.queryCommandState(command);
+      }
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
       block.html = editor.innerHTML;
       rememberSelection();
       persist();
