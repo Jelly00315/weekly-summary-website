@@ -26,12 +26,14 @@ function safeRichHtml(value = '') {
 }
 
 function defaultSettings() {
-  const year = new Date().getFullYear();
+  const today = new Date();
+  const year = today.getFullYear();
+  const currentWeek = iso(monday(today));
   return {
-    years: [year - 2, year - 1, year],
+    years: [year],
     background: '#f4f0e7',
     backgroundHistory: [],
-    weekIndex: {},
+    weekIndex: { [String(year)]: [currentWeek] },
     highlightedWeeks: [],
     fontName: 'Times New Roman',
     fontData: '',
@@ -62,8 +64,7 @@ function putSettings(settings) {
 
 function defaultBlocks() {
   return [
-    { id: uid(), type: 'text', title: 'Progress & results', html: '', color: '#20211e' },
-    { id: uid(), type: 'text', title: 'Next week plan', html: '', color: '#20211e' }
+    { id: uid(), type: 'text', title: 'Note', html: '', color: '#20211e' }
   ];
 }
 
@@ -74,11 +75,13 @@ function normalizeWeek(value) {
   if (Array.isArray(old.blocks)) {
     blocks = old.blocks.filter(block => block && typeof block === 'object').map(block => {
       const type = block.type === 'ink' ? 'ink' : 'text';
+      const legacyTitle = ['Research notes', 'Work notes'].includes(block.title) ? 'Note' : block.title;
+      const title = type === 'ink' && block.title === 'Handwritten notes' ? 'Handwritten Note' : legacyTitle;
       return {
         ...block,
         id: block.id || uid(),
         type,
-        title: block.title || (type === 'ink' ? 'Handwritten notes' : 'Work notes'),
+        title: title || (type === 'ink' ? 'Handwritten Note' : 'Note'),
         color: block.color || (type === 'ink' ? '#24414a' : '#20211e'),
         ...(type === 'ink' ? { drawing: block.drawing || '' } : { html: block.html || '' })
       };
@@ -86,7 +89,7 @@ function normalizeWeek(value) {
   } else {
     if (old.body || old.privateBody) blocks.push({ id: uid(), type: 'text', title: 'Progress & results', html: old.privateBody || old.body, color: '#20211e' });
     if (old.publicBody) blocks.push({ id: uid(), type: 'text', title: 'Shared notes', html: old.publicBody, color: '#20211e' });
-    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten notes', drawing: old.drawing, color: '#24414a' });
+    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten Note', drawing: old.drawing, color: '#24414a' });
   }
 
   return { ...old, summary: typeof old.summary === 'string' ? old.summary : '', blocks: blocks.length ? blocks : defaultBlocks() };
@@ -168,7 +171,12 @@ function listedWeeks(year) {
   if (!Array.isArray(saved)) return weeksIn(year);
   return [...new Set(saved)].map(value => monday(new Date(`${value}T12:00:00`)))
     .filter(date => !Number.isNaN(date.getTime()) && weekYear(date) === year)
-    .sort((a, b) => a - b);
+    .sort((a, b) => b - a);
+}
+
+function chapterNumber(year) {
+  const years = [...new Set(getSettings().years)].sort((a, b) => a - b);
+  return years.indexOf(year) + 1;
 }
 
 async function applyFont(settings) {
@@ -209,7 +217,7 @@ function renderHome() {
         <div class="year-actions"><button id="addYear" class="primary">+ Add year</button></div>
       </section>
       <section class="contents">
-        ${years.map((year, index) => renderYear(year, index)).join('')}
+        ${years.map(year => renderYear(year)).join('')}
       </section>
     </main>`;
 
@@ -228,14 +236,14 @@ function renderHome() {
   document.querySelectorAll('[data-highlight-week]').forEach(button => button.onclick = () => toggleWeekHighlight(button.dataset.highlightWeek));
 }
 
-function renderYear(year, index) {
+function renderYear(year) {
   const entries = listedWeeks(year);
   const highlighted = new Set(getSettings().highlightedWeeks || []);
   const written = entries.filter(date => { const week = getWeek(date); return week.summary || (week.blocks || []).some(block => block.html || block.drawing); }).length;
   return `
     <section class="year-chapter">
       <header>
-        <span class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</span>
+        <span class="chapter-number">CHAPTER ${String(chapterNumber(year)).padStart(2, '0')}</span>
         <h2>${year}</h2>
         <span class="year-count">${written} written weeks</span>
         <button class="add-week" data-add-week="${year}" aria-label="Add a week to ${year}">+ Add week</button>
@@ -294,7 +302,7 @@ function addWeek(year) {
   const settings = getSettings();
   const weeks = listedWeeks(year).map(iso);
   if (weeks.includes(key)) return alert(`${weekLabel(date)} already exists in ${year}.`);
-  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: [...weeks, key].sort() };
+  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: [...weeks, key].sort().reverse() };
   putSettings(settings);
   renderHome();
 }
@@ -373,7 +381,7 @@ function renderBlock(block, settings) {
   if (block.type === 'ink') return `
     <article class="note-block ink-block" data-block="${block.id}">
       <header class="block-header">
-        <input class="block-title" value="${escapeHtml(block.title || 'Handwritten notes')}" aria-label="Block title">
+        <input class="block-title" value="${escapeHtml(block.title || 'Handwritten Note')}" aria-label="Block title">
         <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
       </header>
       <canvas class="ink-canvas"></canvas>
@@ -382,7 +390,7 @@ function renderBlock(block, settings) {
   return `
     <article class="note-block text-block" data-block="${block.id}">
       <header class="block-header">
-        <input class="block-title" value="${escapeHtml(block.title || 'Work notes')}" aria-label="Block title">
+        <input class="block-title" value="${escapeHtml(block.title || 'Note')}" aria-label="Block title">
         <button class="remove-block">Delete</button>
       </header>
       <div class="toolbar">
@@ -404,8 +412,8 @@ function bindWeek(date, week) {
   document.querySelector('#showBlockChoices').onclick = () => { const choices = document.querySelector('#blockChoices'); choices.hidden = !choices.hidden; };
   document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
     week.blocks.push(button.dataset.addType === 'ink'
-      ? { id: uid(), type: 'ink', title: 'Handwritten notes', drawing: '', color: '#24414a' }
-      : { id: uid(), type: 'text', title: 'Work notes', html: '', color: '#20211e' });
+      ? { id: uid(), type: 'ink', title: 'Handwritten Note', drawing: '', color: '#24414a' }
+      : { id: uid(), type: 'text', title: 'Note', html: '', color: '#20211e' });
     putWeek(date, week);
     renderWeek(date);
   });
@@ -531,8 +539,8 @@ function renderSharedHome(token) {
     <main class="book shared-book">
       <header class="masthead"><a class="wordmark" href="./">Je<span>Week</span>Summary</a><span class="edition">Read-only shared notebook</span></header>
       <section class="cover"><p class="kicker">Published work record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
-      <section class="contents">${years.map((year, yearIndex) => `
-        <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(yearIndex + 1).padStart(2, '0')}</span><h2>${year}</h2></header>
+      <section class="contents">${years.map(year => `
+        <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(chapterNumber(year)).padStart(2, '0')}</span><h2>${year}</h2></header>
         <div class="chapters">${listedWeeks(year).map((date, index) => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
     </main>`;
   document.querySelectorAll('[data-shared-week]').forEach(button => button.onclick = () => { location.href = `?share=${token}&week=${button.dataset.sharedWeek}`; });
@@ -548,8 +556,8 @@ function renderSharedWeek(date, token) {
       <header class="notebook-nav"><a href="?share=${token}" class="back">&#8592; Shared contents</a><span class="edition">Read only</span></header>
       <section class="week-heading"><p class="kicker">Published work update / ${date.getFullYear()}</p><h1>${weekLabel(date)}</h1><p class="shared-summary">${escapeHtml(week.summary || 'Untitled work week')}</p></section>
       <section class="blocks">${week.blocks.map(block => block.type === 'ink'
-        ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten notes')}</h2>${block.drawing ? `<img class="shared-ink" src="${block.drawing}" alt="Handwritten notes">` : '<p>No handwriting added.</p>'}</article>`
-        : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Work notes')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
+        ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten Note')}</h2>${block.drawing ? `<img class="shared-ink" src="${block.drawing}" alt="Handwritten Note">` : '<p>No handwriting added.</p>'}</article>`
+        : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Note')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
     </main>`;
 }
 
