@@ -8,9 +8,18 @@
 .welcome h1 { font: 600 clamp(52px, 8vw, 86px)/.96 Fraunces, serif; letter-spacing: -.05em; margin: 0; }
 .welcome section > p:not(.kicker) { max-width: 560px; color: var(--muted); line-height: 1.75; margin: 25px 0; }
 .google-login { border: 0; background: var(--navy); color: white; padding: 13px 18px; border-radius: 4px; font-weight: 700; }
+.login-options { display: grid; gap: 14px; max-width: 520px; }
+.login-options > span { color: var(--muted); font-size: 11px; }
+.email-login { display: grid; gap: 7px; }
+.email-login label { color: var(--muted); font-size: 11px; }
+.email-login > div { display: flex; gap: 8px; }
+.email-login input { min-width: 0; flex: 1; border: 1px solid var(--line); border-radius: 4px; background: var(--page); padding: 12px; }
+.email-login button { border: 0; border-radius: 4px; background: var(--rust); color: white; padding: 11px 14px; font-weight: 700; }
+.email-login button:disabled { opacity: .6; cursor: wait; }
+#emailLoginStatus { min-height: 18px; margin: 0; color: var(--muted); font-size: 11px; }
 .welcome-error { color: #a13f31 !important; border-left: 3px solid #a13f31; padding-left: 12px; }
 .shared-summary { font: 21px var(--writing-font); color: var(--muted); border-bottom: 1px solid var(--line); padding: 20px 0 10px; }
 .shared-text > h2, .shared-notebook .note-block > h2 { font: 600 25px Fraunces, serif; }
 .shared-text > div { font: 17px/1.7 var(--writing-font); }
 .shared-ink { display: block; width: 100%; max-height: 500px; object-fit: contain; background: white; border: 1px solid var(--line); }
-@media(max-width:700px) { .welcome { padding: 22px 18px; } .welcome > section { padding: 50px 0; } .welcome h1 { font-size: 52px; } .account-control span { display: none; } .account-control { margin-left: auto; } .masthead { flex-wrap: wrap; } }
+@media(max-width:700px) { .welcome { padding: 22px 18px; } .welcome > section { padding: 50px 0; } .welcome h1 { font-size: 52px; } .account-control span { display: none; } .account-control { margin-left: auto; } .masthead { flex-wrap: wrap; } .email-login > div { flex-direction: column; } }

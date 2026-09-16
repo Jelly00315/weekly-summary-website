@@ -530,10 +530,10 @@ function renderBlock(block, settings) {
     <article class="note-block ink-block" data-block="${block.id}">
       <header class="block-header">
         <input class="block-title" value="${escapeHtml(block.title || 'Handwritten Note')}" aria-label="Block title">
-        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
+        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
       </header>
       <canvas class="ink-canvas"></canvas>
-      <p class="ink-tip">Pressure-sensitive with a compatible stylus.</p>
+      <p class="ink-tip">Pressure-sensitive with a compatible stylus. Select Eraser to remove individual strokes.</p>
     </article>`;
   return `
     <article class="note-block text-block" data-block="${block.id}">
@@ -593,7 +593,15 @@ function bindBlock(element, week, persist) {
   };
   if (block.type === 'ink') {
     const canvas = element.querySelector('canvas');
-    setupCanvas(canvas, block, persist);
+    let erasing = false;
+    const eraserButton = element.querySelector('.eraser-toggle');
+    eraserButton.onclick = () => {
+      erasing = !erasing;
+      eraserButton.classList.toggle('active', erasing);
+      eraserButton.setAttribute('aria-pressed', String(erasing));
+      canvas.classList.toggle('erasing', erasing);
+    };
+    setupCanvas(canvas, block, persist, () => erasing);
     element.querySelector('.clear-ink').onclick = () => {
       if (!confirm('Clear this handwriting block? This cannot be undone.')) return;
       canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
@@ -640,7 +648,7 @@ function bindBlock(element, week, persist) {
   };
 }
 
-function setupCanvas(canvas, block, persist) {
+function setupCanvas(canvas, block, persist, isErasing) {
   const context = canvas.getContext('2d');
   const ratio = devicePixelRatio || 1;
   const width = canvas.clientWidth;
@@ -658,8 +666,10 @@ function setupCanvas(canvas, block, persist) {
     if (!active) return;
     const next = point(event);
     context.beginPath();
-    context.strokeStyle = block.color;
-    context.lineWidth = 1 + next.pressure * 5.5;
+    const erasing = isErasing();
+    context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+    context.strokeStyle = erasing ? '#000' : block.color;
+    context.lineWidth = erasing ? 9 + next.pressure * 18 : 1 + next.pressure * 5.5;
     context.moveTo(last.x, last.y);
     context.lineTo(next.x, next.y);
     context.stroke();
@@ -701,12 +711,31 @@ function renderWelcome(message = '') {
         <h1>Keep the work.<br>Plan what comes next.</h1>
         <p>Sign in to open your synchronized notebook on any phone or computer. A read-only sharing link opens a published notebook without an account.</p>
         ${message ? `<p class="welcome-error">${escapeHtml(message)}</p>` : ''}
-        <button id="googleLogin" class="google-login">Continue with Google</button>
+        <div class="login-options">
+          <button id="googleLogin" class="google-login">Continue with Google</button>
+          <span>or</span>
+          <form id="emailLogin" class="email-login">
+            <label for="loginEmail">Email address</label>
+            <div><input id="loginEmail" name="email" type="email" autocomplete="email" required placeholder="you@example.com"><button type="submit">Email me a sign-in link</button></div>
+            <p id="emailLoginStatus" role="status"></p>
+          </form>
+        </div>
       </section>
     </main>`;
   document.querySelector('#googleLogin').onclick = async () => {
     const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } } });
     if (error) alert(error.message);
+  };
+  document.querySelector('#emailLogin').onsubmit = async event => {
+    event.preventDefault();
+    const email = event.currentTarget.elements.email.value.trim();
+    const status = document.querySelector('#emailLoginStatus');
+    const button = event.currentTarget.querySelector('button');
+    button.disabled = true;
+    status.textContent = 'Sending your secure sign-in link...';
+    const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    button.disabled = false;
+    status.textContent = error ? error.message : 'Check your email and open the sign-in link.';
   };
 }
 

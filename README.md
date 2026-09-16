@@ -2,7 +2,7 @@
 
 A private, cloud-synchronized weekly work journal. Its desktop home is a book-like table of contents: years are chapters and weeks are entries that open into their own writing view.
 
-JeWeekSummary supports Google authentication and synchronized cloud notebooks through Supabase. Run the latest `supabase-schema.sql` in the Supabase SQL Editor after setup changes. Signed-in users own and edit only their notebook; revocable sharing links expose a separate read-only view.
+JeWeekSummary supports Google authentication, passwordless email sign-in, and synchronized cloud notebooks through Supabase. Run the latest `supabase-schema.sql` in the Supabase SQL Editor after setup changes. Signed-in users own and edit only their notebook; revocable sharing links expose a separate read-only view.
 
 Open `index.html` in a modern browser. Your summaries, entries, and handwritten drawings are saved locally on that device. Use **Export .md** to download a text copy of the current week.
 
@@ -12,6 +12,7 @@ Features:
 - Add or safely remove complete year chapters
 - Weeks listed chronologically from the beginning of each year
 - OneNote-style typed and pressure-sensitive handwriting blocks
+- Stroke eraser for handwriting blocks
 - Add, rename, recolor, and safely delete individual blocks
 - Bold, italic, highlight, lists, working font selection (including 宋体/SimSun), and device-local font upload
 - Device-local CSS upload for custom week-page appearance, with external CSS requests blocked
