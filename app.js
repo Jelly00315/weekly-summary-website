@@ -475,6 +475,52 @@ function deleteYear(year) {
   renderHome();
 }
 
+function downloadFile(filename, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function safeFilename(value) {
+  return String(value || 'note').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').slice(0, 80) || 'note';
+}
+
+function htmlToMarkdown(html) {
+  const template = document.createElement('template');
+  template.innerHTML = safeRichHtml(html);
+  const convert = node => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/([\\`*_{}\[\]])/g, '\\$1');
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const content = [...node.childNodes].map(convert).join('');
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    if (tag === 'b' || tag === 'strong') return `**${content}**`;
+    if (tag === 'i' || tag === 'em') return `*${content}*`;
+    if (tag === 'li') return `- ${content.trim()}\n`;
+    if (tag === 'p' || tag === 'div') return `${content.trim()}\n\n`;
+    if (tag === 'ul' || tag === 'ol') return `${content}\n`;
+    return content;
+  };
+  return [...template.content.childNodes].map(convert).join('').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function downloadWeekBackup(date, week) {
+  const backup = { format: 'JeWeekSummary-week', version: 1, exportedAt: new Date().toISOString(), weekStart: iso(date), week };
+  downloadFile(`JeWeekSummary-${iso(date)}.json`, JSON.stringify(backup, null, 2), 'application/json');
+}
+
+function printWeek(date) {
+  const previousTitle = document.title;
+  document.title = `JeWeekSummary-${iso(date)}`;
+  window.addEventListener('afterprint', () => { document.title = previousTitle; }, { once: true });
+  window.print();
+}
+
 function renderWeek(date) {
   const settings = getSettings();
   const localFont = getLocalFont();
@@ -511,6 +557,8 @@ function renderWeek(date) {
           <input id="cssUpload" type="file" accept=".css,text/css">
         </label>
         <button id="clearCustomCss" class="danger" ${getLocalCss() ? '' : 'disabled'}>Clear CSS</button>
+        <button id="downloadPdf" class="export-button">Download PDF</button>
+        <button id="downloadBackup" class="export-button">Editable backup</button>
         <button id="deleteWeek" class="danger">Delete week</button>
         <button id="saveWeek" class="primary">Save update</button>
       </footer>
@@ -553,7 +601,7 @@ function renderBlock(block, settings) {
     <article class="note-block text-block" data-block="${block.id}">
       <header class="block-header">
         <input class="block-title" value="${escapeHtml(block.title || 'Note')}" aria-label="Block title">
-        <button class="remove-block">Delete</button>
+        <div class="block-tools"><button class="download-markdown">Download .md</button><button class="remove-block">Delete</button></div>
       </header>
       <div class="toolbar">
         <button type="button" data-command="bold" aria-pressed="false"><b>B</b></button>
@@ -589,6 +637,8 @@ function bindWeek(date, week) {
     renderWeek(date);
   });
   document.querySelector('#deleteWeek').onclick = () => deleteListedWeek(iso(date));
+  document.querySelector('#downloadPdf').onclick = () => printWeek(date);
+  document.querySelector('#downloadBackup').onclick = () => downloadWeekBackup(date, week);
   document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
   document.querySelector('#cssUpload').onchange = event => uploadWeekCss(event, date);
   document.querySelector('#clearCustomCss').onclick = () => {
@@ -596,10 +646,10 @@ function bindWeek(date, week) {
     document.querySelector('#localWeekStyle')?.remove();
     renderWeek(date);
   };
-  document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist));
+  document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist, date));
 }
 
-function bindBlock(element, week, persist) {
+function bindBlock(element, week, persist, date) {
   const block = week.blocks.find(item => item.id === element.dataset.block);
   element.querySelector('.block-title').oninput = e => { block.title = e.target.value; persist(); };
   element.querySelector('.remove-block').onclick = () => {
@@ -633,6 +683,11 @@ function bindBlock(element, week, persist) {
     };
     return;
   }
+  element.querySelector('.download-markdown').onclick = () => {
+    const title = block.title || 'Note';
+    const markdown = `# ${title}\n\n${htmlToMarkdown(block.html || '')}\n`;
+    downloadFile(`${iso(date)}-${safeFilename(title)}.md`, markdown, 'text/markdown;charset=utf-8');
+  };
   const editor = element.querySelector('.text-editor');
   let savedRange = null;
   const rememberSelection = () => {

@@ -16,6 +16,7 @@ Features:
 - Add, rename, recolor, and safely delete individual blocks
 - Toggleable bold, italic, and highlight formatting for selected text, plus lists, free text sizing, font selection (including 宋体/SimSun), and device-local font upload
 - Device-local CSS upload for custom week-page appearance, with external CSS requests blocked
+- Per-block Markdown export, full-week PDF printing, and editable JSON week backups
 - Background color picker with the three previously selected colors
 - Permanent self-service account deletion with typed confirmation
 

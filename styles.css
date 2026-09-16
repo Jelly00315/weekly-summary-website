@@ -23,3 +23,7 @@
 .toolbar button.active{border-color:var(--rust);background:#fff0c2;color:#713c19}
 
 .save-toast{position:fixed;left:50%;bottom:28px;z-index:1000;transform:translate(-50%,14px);padding:11px 20px;border-radius:999px;background:var(--navy);color:#fff;box-shadow:0 10px 30px #15283240;font-weight:700;font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}.save-toast.visible{opacity:1;transform:translate(-50%,0)}
+
+.export-button,.download-markdown{border:1px solid var(--line);background:var(--page);border-radius:3px;padding:7px 10px;color:var(--navy);font-size:11px}
+
+@media print{@page{margin:14mm}body{background:#fff}.notebook{max-width:none;padding:0}.notebook-nav,.toolbar,.add-block,.notebook-footer,.block-tools,.ink-tip,.save-toast{display:none!important}.week-heading{padding:0 0 24px}.week-heading input,.block-title{border:0!important;padding-left:0;background:transparent}.blocks{display:block}.note-block{break-inside:avoid;margin:0 0 18px;box-shadow:none}.text-editor{min-height:0;border:0;padding:0}.ink-canvas{max-width:100%;border:0}}
