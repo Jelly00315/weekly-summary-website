@@ -871,7 +871,17 @@ function setupCanvas(canvas, block, persist, isErasing) {
   canvas.height = height * ratio;
   context.scale(ratio, ratio);
   context.lineCap = 'round';
-  if (block.drawing) { const image = new Image(); image.onload = () => context.drawImage(image, 0, 0, width, height); image.src = block.drawing; }
+  if (block.drawing) {
+    const image = new Image();
+    image.onload = () => {
+      const savedWidth = Number(block.drawingWidth) || image.naturalWidth;
+      const savedHeight = Number(block.drawingHeight) || image.naturalHeight;
+      const proportionalHeight = width * (savedHeight / savedWidth);
+      context.globalCompositeOperation = 'source-over';
+      context.drawImage(image, 0, 0, width, proportionalHeight);
+    };
+    image.src = block.drawing;
+  }
   let active = false;
   let last;
   const point = event => { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: Math.max(.12, event.pointerType === 'pen' ? event.pressure : .5) }; };
@@ -889,7 +899,13 @@ function setupCanvas(canvas, block, persist, isErasing) {
     context.stroke();
     last = next;
   };
-  canvas.onpointerup = () => { active = false; block.drawing = canvas.toDataURL(); persist(); };
+  canvas.onpointerup = () => {
+    active = false;
+    block.drawing = canvas.toDataURL();
+    block.drawingWidth = width;
+    block.drawingHeight = height;
+    persist();
+  };
 }
 
 async function openShareDialog() {
