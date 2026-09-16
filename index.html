@@ -4,11 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f2eb" />
+    <meta name="description" content="A private, cloud-synchronized weekly work notebook." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>JeWeekSummary</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="auth.css" />
   </head>
   <body>
+    <button id="installApp" class="install-app" type="button" hidden>Install app</button>
     <main id="app" class="loading-fallback">
       <section>
         <p>JEWEEKSUMMARY</p>

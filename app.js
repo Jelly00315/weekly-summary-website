@@ -10,6 +10,52 @@ let cloudState = null;
 let currentUser = null;
 let saveTimer = null;
 let activeShare = null;
+let deferredInstallPrompt = null;
+let offlinePendingSync = false;
+
+const OFFLINE_DB = 'je-week-summary-offline';
+const OFFLINE_STORE = 'notebooks';
+
+function openOfflineDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(OFFLINE_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(OFFLINE_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadOfflineNotebook(userId) {
+  const database = await openOfflineDb();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(OFFLINE_STORE).objectStore(OFFLINE_STORE).get(userId);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  }).finally(() => database.close());
+}
+
+async function saveOfflineNotebook() {
+  if (!currentUser || !cloudState) return;
+  const database = await openOfflineDb();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_STORE).put({ content: JSON.parse(JSON.stringify(cloudState)), pendingSync: offlinePendingSync }, currentUser.id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
+
+async function deleteOfflineNotebook(userId) {
+  const database = await openOfflineDb();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_STORE).delete(userId);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -192,16 +238,27 @@ async function loadCloudState() {
     }
     return key;
   });
+  offlinePendingSync = false;
+  saveOfflineNotebook().catch(() => {});
   if (migratedLegacyWeeks) queueCloudSave();
 }
 
 function queueCloudSave() {
   if (!cloudState || !currentUser) return;
+  if (!navigator.onLine) offlinePendingSync = true;
+  saveOfflineNotebook().catch(() => {});
   clearTimeout(saveTimer);
   const status = document.querySelector('#saveStatus');
   if (status) status.textContent = 'Saving...';
   saveTimer = setTimeout(async () => {
+    if (!navigator.onLine) {
+      const offlineStatus = document.querySelector('#saveStatus');
+      if (offlineStatus) offlineStatus.textContent = 'Saved offline';
+      return;
+    }
     const { error } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState, updated_at: new Date().toISOString() });
+    offlinePendingSync = Boolean(error);
+    saveOfflineNotebook().catch(() => {});
     const nextStatus = document.querySelector('#saveStatus');
     if (nextStatus) nextStatus.textContent = error ? 'Cloud save failed' : 'Saved to cloud';
   }, 550);
@@ -209,10 +266,18 @@ function queueCloudSave() {
 
 async function saveCloudNow() {
   if (!cloudState || !currentUser) return null;
+  await saveOfflineNotebook().catch(() => {});
   clearTimeout(saveTimer);
+  if (!navigator.onLine) {
+    const offlineStatus = document.querySelector('#saveStatus');
+    if (offlineStatus) offlineStatus.textContent = 'Saved offline';
+    return null;
+  }
   const status = document.querySelector('#saveStatus');
   if (status) status.textContent = 'Saving...';
   const { error } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState, updated_at: new Date().toISOString() });
+  offlinePendingSync = Boolean(error);
+  saveOfflineNotebook().catch(() => {});
   const nextStatus = document.querySelector('#saveStatus');
   if (nextStatus) nextStatus.textContent = error ? 'Cloud save failed' : 'Saved to cloud';
   return error;
@@ -369,6 +434,7 @@ function deleteSavedColor(color) {
 }
 
 async function deleteAccount() {
+  const deletedUserId = currentUser.id;
   const answer = prompt(`Permanently delete ${currentUser.email || 'this account'} and all of its weeks?\n\nType DELETE to confirm.`);
   if (answer !== 'DELETE') {
     if (answer !== null) alert('Account deletion was cancelled. You must type DELETE exactly.');
@@ -392,6 +458,7 @@ async function deleteAccount() {
     .filter(key => key && key.startsWith(WEEK_PREFIX))
     .forEach(key => localStorage.removeItem(key));
   await db.auth.signOut();
+  await deleteOfflineNotebook(deletedUserId).catch(() => {});
   location.href = './';
 }
 
@@ -1057,8 +1124,42 @@ async function start() {
     if (selectedWeek) renderWeek(monday(new Date(`${selectedWeek}T12:00:00`)));
     else renderHome();
   } catch (error) {
-    renderWelcome(`Cloud setup is not complete yet: ${error.message}`);
+    const offlineRecord = await loadOfflineNotebook(currentUser.id).catch(() => null);
+    if (!offlineRecord) return renderWelcome(navigator.onLine
+      ? `Cloud setup is not complete yet: ${error.message}`
+      : 'You are offline. Connect once to download this notebook to the app.');
+    cloudState = offlineRecord.content || offlineRecord;
+    offlinePendingSync = Boolean(offlineRecord.pendingSync);
+    cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
+    cloudState.weeks = cloudState.weeks || {};
+    if (selectedWeek) renderWeek(monday(new Date(`${selectedWeek}T12:00:00`)));
+    else renderHome();
+    showToast('Offline mode');
   }
 }
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  document.querySelector('#installApp').hidden = false;
+});
+
+document.querySelector('#installApp').onclick = async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.querySelector('#installApp').hidden = true;
+};
+
+window.addEventListener('appinstalled', () => { document.querySelector('#installApp').hidden = true; });
+window.addEventListener('online', () => {
+  if (!currentUser || !cloudState || !offlinePendingSync) return;
+  saveCloudNow().then(error => {
+    if (!error) showToast('Back online. Saved to cloud.');
+  });
+});
+
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 
 start();

@@ -29,3 +29,10 @@
 .export-button,.download-markdown{border:1px solid var(--line);background:var(--page);border-radius:3px;padding:7px 10px;color:var(--navy);font-size:11px}
 
 @media print{@page{margin:14mm}body{background:#fff}.notebook{max-width:none;padding:0}.notebook-nav,.toolbar,.add-block,.notebook-footer,.block-tools,.block-order,.ink-tip,.save-toast{display:none!important}.week-heading{padding:0 0 24px}.week-heading input,.block-title{border:0!important;padding-left:0;background:transparent}.blocks{display:block}.note-block{break-inside:avoid;margin:0 0 18px;box-shadow:none}.text-editor{min-height:0;border:0;padding:0}.ink-canvas{max-width:100%;border:0}}
+
+body{padding-bottom:env(safe-area-inset-bottom)}
+.book,.notebook{padding-top:calc(30px + env(safe-area-inset-top))}
+.install-app{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1200;border:0;border-radius:999px;padding:11px 16px;background:var(--navy);color:#fff;box-shadow:0 8px 26px #15283245;font-size:12px;font-weight:700}
+.install-app[hidden]{display:none}
+@media(max-width:700px){.book,.notebook{padding-top:calc(21px + env(safe-area-inset-top))}}
+@media print{.install-app{display:none!important}}

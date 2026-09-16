@@ -4,10 +4,16 @@ A private, cloud-synchronized weekly work journal. Its desktop home is a book-li
 
 JeWeekSummary supports Google authentication, passwordless email sign-in, and synchronized cloud notebooks through Supabase. Run the latest `supabase-schema.sql` in the Supabase SQL Editor after setup changes. Signed-in users own and edit only their notebook; revocable sharing links expose a separate read-only view.
 
+The deployed site is also an installable Progressive Web App. After one online login, each account receives its own IndexedDB offline copy. Offline edits save locally and synchronize to Supabase automatically after the device reconnects.
+
+On Android or desktop Chrome/Edge, use the visible **Install app** button when offered. On iPhone/iPad, open the browser Share menu and choose **Add to Home Screen**.
+
 Open `index.html` in a modern browser. Your summaries, entries, and handwritten drawings are saved locally on that device. Use **Export .md** to download a text copy of the current week.
 
 Features:
 
+- Installable phone and desktop app with an account-isolated offline notebook cache
+- Automatic cloud synchronization after reconnecting
 - Work-update structure for completed work and the coming week's plan
 - Add or safely remove complete year chapters
 - Weeks listed chronologically from the beginning of each year

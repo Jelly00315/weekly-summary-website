@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "JeWeekSummary",
+  "short_name": "JeWeek",
+  "description": "A private, cloud-synchronized weekly work notebook.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f0e7",
+  "theme_color": "#213642",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
