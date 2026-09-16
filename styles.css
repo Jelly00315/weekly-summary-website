@@ -34,5 +34,6 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 .book,.notebook{padding-top:calc(30px + env(safe-area-inset-top))}
 .install-app{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1200;border:0;border-radius:999px;padding:11px 16px;background:var(--navy);color:#fff;box-shadow:0 8px 26px #15283245;font-size:12px;font-weight:700}
 .install-app[hidden]{display:none}
+.app-update{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1250;transform:translateX(-50%);border:0;border-radius:999px;padding:11px 17px;background:var(--rust);color:#fff;box-shadow:0 8px 26px #15283245;font-size:12px;font-weight:700;white-space:nowrap}
 @media(max-width:700px){.book,.notebook{padding-top:calc(21px + env(safe-area-inset-top))}}
-@media print{.install-app{display:none!important}}
+@media print{.install-app,.app-update{display:none!important}}

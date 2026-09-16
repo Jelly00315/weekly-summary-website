@@ -8,6 +8,8 @@ The deployed site is also an installable Progressive Web App. After one online l
 
 On Android or desktop Chrome/Edge, use the visible **Install app** button when offered. On iPhone/iPad, open the browser Share menu and choose **Add to Home Screen**.
 
+While online, refreshing or reopening the installed app checks the deployed website for updated files. When a new service worker is ready, the app displays a **New version available — Reload** button. Cached files remain the fallback when offline.
+
 Open `index.html` in a modern browser. Your summaries, entries, and handwritten drawings are saved locally on that device. Use **Export .md** to download a text copy of the current week.
 
 Features:

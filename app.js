@@ -1160,6 +1160,27 @@ window.addEventListener('online', () => {
   });
 });
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+function showAppUpdateNotice() {
+  if (document.querySelector('.app-update')) return;
+  const button = document.createElement('button');
+  button.className = 'app-update';
+  button.type = 'button';
+  button.textContent = 'New version available — Reload';
+  button.onclick = () => location.reload();
+  document.body.appendChild(button);
+}
+
+if ('serviceWorker' in navigator) window.addEventListener('load', async () => {
+  try {
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    registration.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      worker?.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) showAppUpdateNotice();
+      });
+    });
+    await registration.update();
+  } catch { /* the online website still works without app installation */ }
+});
 
 start();

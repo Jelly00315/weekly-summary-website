@@ -1,4 +1,4 @@
-const CACHE_NAME = 'je-week-summary-v1';
+const CACHE_NAME = 'je-week-summary-v2';
 const APP_SHELL = ['./', './index.html', './styles.css', './auth.css', './app.js', './manifest.webmanifest', './app-icon.svg'];
 const SUPABASE_CLIENT = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -33,11 +33,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+  event.respondWith(fetch(event.request).then(response => {
     if (response.ok || response.type === 'opaque') {
       const copy = response.clone();
       caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
     }
     return response;
-  })));
+  }).catch(() => caches.match(event.request)));
 });
