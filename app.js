@@ -10,7 +10,7 @@ let saveTimer = null;
 let activeShare = null;
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-const iso = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d, amount) => { const next = new Date(d); next.setDate(next.getDate() + amount); return next; };
 const monday = d => { const next = new Date(d); next.setHours(0, 0, 0, 0); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return next; };
 const weekLabel = d => `${d.getMonth() + 1}.${d.getDate()} - ${addDays(d, 6).getMonth() + 1}.${addDays(d, 6).getDate()}`;
@@ -130,9 +130,34 @@ async function loadCloudState() {
   cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
   cloudState.weeks = cloudState.weeks || {};
   let migratedLegacyWeeks = false;
+  const migratedWeeks = {};
   Object.entries(cloudState.weeks).forEach(([key, week]) => {
+    const date = new Date(`${key}T12:00:00`);
+    const correctedKey = !Number.isNaN(date.getTime()) && date.getDay() === 0 ? iso(addDays(date, 1)) : key;
+    if (correctedKey !== key) migratedLegacyWeeks = true;
     if (!Array.isArray(week && week.blocks)) migratedLegacyWeeks = true;
-    cloudState.weeks[key] = normalizeWeek(week);
+    migratedWeeks[correctedKey] = normalizeWeek(week);
+  });
+  cloudState.weeks = migratedWeeks;
+  const correctedIndex = {};
+  Object.entries(cloudState.settings.weekIndex || {}).forEach(([year, keys]) => {
+    correctedIndex[year] = Array.isArray(keys) ? [...new Set(keys.map(key => {
+      const date = new Date(`${key}T12:00:00`);
+      if (!Number.isNaN(date.getTime()) && date.getDay() === 0) {
+        migratedLegacyWeeks = true;
+        return iso(addDays(date, 1));
+      }
+      return key;
+    }))] : keys;
+  });
+  cloudState.settings.weekIndex = correctedIndex;
+  cloudState.settings.highlightedWeeks = (cloudState.settings.highlightedWeeks || []).map(key => {
+    const date = new Date(`${key}T12:00:00`);
+    if (!Number.isNaN(date.getTime()) && date.getDay() === 0) {
+      migratedLegacyWeeks = true;
+      return iso(addDays(date, 1));
+    }
+    return key;
   });
   if (migratedLegacyWeeks) queueCloudSave();
 }
@@ -175,6 +200,12 @@ function weeksIn(year) {
 
 function weekYear(date) {
   return addDays(monday(date), 3).getFullYear();
+}
+
+function weekNumber(date) {
+  const year = weekYear(date);
+  const firstWeek = monday(new Date(year, 0, 4));
+  return Math.round((monday(date) - firstWeek) / 604800000) + 1;
 }
 
 function listedWeeks(year) {
@@ -265,7 +296,7 @@ function renderYear(year) {
           const week = getWeek(date);
           const key = iso(date);
           const isHighlighted = highlighted.has(key);
-          return `<div class="chapter${isHighlighted ? ' highlighted' : ''}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><button class="chapter-main" data-week-open="${key}"><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">Open</span></button><button class="highlight-week" data-highlight-week="${key}" aria-pressed="${isHighlighted}" title="${isHighlighted ? 'Remove highlight' : 'Highlight important week'}">${isHighlighted ? 'Important' : 'Highlight'}</button><button class="remove-week" data-remove-week="${key}" aria-label="Remove week ${weekLabel(date)}">-</button></div>`;
+          return `<div class="chapter${isHighlighted ? ' highlighted' : ''}"><span class="chapter-no">W${String(weekNumber(date)).padStart(2, '0')}</span><button class="chapter-main" data-week-open="${key}"><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">Open</span></button><button class="highlight-week" data-highlight-week="${key}" aria-pressed="${isHighlighted}" title="${isHighlighted ? 'Remove highlight' : 'Highlight important week'}">${isHighlighted ? 'Important' : 'Highlight'}</button><button class="remove-week" data-remove-week="${key}" aria-label="Remove week ${weekLabel(date)}">-</button></div>`;
         }).join('')}
       </div>
     </section>`;
@@ -301,7 +332,12 @@ function addYear() {
 }
 
 function addWeek(year) {
-  const answer = prompt(`Enter any date in the week you want to add to ${year} (YYYY-MM-DD):`, `${year}-01-01`);
+  const existing = listedWeeks(year);
+  const currentWeek = monday(new Date());
+  const suggested = existing.length
+    ? addDays(existing[0], 7)
+    : year === weekYear(currentWeek) ? currentWeek : weeksIn(year)[0];
+  const answer = prompt(`Enter any date in the week you want to add to ${year} (YYYY-MM-DD):`, iso(suggested));
   if (answer === null) return;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(answer)) return alert('Please enter the date as YYYY-MM-DD.');
   const requested = new Date(`${answer}T12:00:00`);
@@ -359,6 +395,11 @@ function deleteYear(year) {
   settings.weekIndex = { ...(settings.weekIndex || {}) };
   delete settings.weekIndex[String(year)];
   settings.highlightedWeeks = (settings.highlightedWeeks || []).filter(key => weekYear(new Date(`${key}T12:00:00`)) !== year);
+  if (!settings.years.length) {
+    const defaults = defaultSettings();
+    settings.years = defaults.years;
+    settings.weekIndex = defaults.weekIndex;
+  }
   putSettings(settings);
   renderHome();
 }
@@ -564,7 +605,7 @@ function renderSharedHome(token) {
       <section class="cover"><p class="kicker">Published work record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
       <section class="contents">${years.map(year => `
         <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(chapterNumber(year)).padStart(2, '0')}</span><h2>${year}</h2></header>
-        <div class="chapters">${listedWeeks(year).map((date, index) => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
+        <div class="chapters">${listedWeeks(year).map(date => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">W${String(weekNumber(date)).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
     </main>`;
   document.querySelectorAll('[data-shared-week]').forEach(button => button.onclick = () => { location.href = `?share=${token}&week=${button.dataset.sharedWeek}`; });
 }
