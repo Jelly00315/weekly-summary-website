@@ -97,13 +97,18 @@ function normalizeWeek(value) {
         type,
         title: title || (type === 'ink' ? 'Handwritten Note' : 'Note'),
         color: block.color || (type === 'ink' ? '#24414a' : '#20211e'),
-        ...(type === 'ink' ? { drawing: block.drawing || '' } : { html: block.html || '' })
+        ...(type === 'ink' ? {
+          drawing: block.drawing || '',
+          height: Math.min(1200, Math.max(150, Number(block.height) || 300)),
+          paper: block.paper === 'lined' ? 'lined' : 'blank',
+          lineSpacing: Math.min(80, Math.max(12, Number(block.lineSpacing) || 28))
+        } : { html: block.html || '' })
       };
     });
   } else {
     if (old.body || old.privateBody) blocks.push({ id: uid(), type: 'text', title: 'Progress & results', html: old.privateBody || old.body, color: '#20211e' });
     if (old.publicBody) blocks.push({ id: uid(), type: 'text', title: 'Shared notes', html: old.publicBody, color: '#20211e' });
-    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten Note', drawing: old.drawing, color: '#24414a' });
+    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten Note', drawing: old.drawing, color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28 });
   }
 
   return { ...old, summary: typeof old.summary === 'string' ? old.summary : '', blocks: blocks.length ? blocks : defaultBlocks() };
@@ -587,19 +592,30 @@ function fontOptions(settings) {
     .map(font => `<option value="${escapeHtml(font.value)}">${escapeHtml(font.label)}</option>`).join('');
 }
 
+function inkHeight(block) {
+  return Math.min(1200, Math.max(150, Number(block.height) || 300));
+}
+
+function inkLineSpacing(block) {
+  return Math.min(80, Math.max(12, Number(block.lineSpacing) || 28));
+}
+
 function renderBlock(block, settings) {
+  const dragHandle = '<button type="button" class="drag-handle" aria-label="Drag to reorder block" title="Drag to reorder; use arrow keys for keyboard reordering">⋮⋮</button>';
   if (block.type === 'ink') return `
     <article class="note-block ink-block" data-block="${block.id}">
       <header class="block-header">
+        ${dragHandle}
         <input class="block-title" value="${escapeHtml(block.title || 'Handwritten Note')}" aria-label="Block title">
-        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
+        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><label>Height <input class="canvas-height" type="number" min="150" max="1200" step="25" value="${inkHeight(block)}"></label><label>Paper <select class="paper-style"><option value="blank"${block.paper !== 'lined' ? ' selected' : ''}>Blank</option><option value="lined"${block.paper === 'lined' ? ' selected' : ''}>Horizontal lines</option></select></label><label>Line gap <input class="line-spacing" type="number" min="12" max="80" value="${inkLineSpacing(block)}" ${block.paper === 'lined' ? '' : 'disabled'}></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
       </header>
-      <canvas class="ink-canvas"></canvas>
+      <canvas class="ink-canvas${block.paper === 'lined' ? ' lined' : ''}" style="height:${inkHeight(block)}px;--line-spacing:${inkLineSpacing(block)}px"></canvas>
       <p class="ink-tip">Pressure-sensitive with a compatible stylus. Select Eraser to remove individual strokes.</p>
     </article>`;
   return `
     <article class="note-block text-block" data-block="${block.id}">
       <header class="block-header">
+        ${dragHandle}
         <input class="block-title" value="${escapeHtml(block.title || 'Note')}" aria-label="Block title">
         <div class="block-tools"><button class="download-markdown">Download .md</button><button class="remove-block">Delete</button></div>
       </header>
@@ -631,7 +647,7 @@ function bindWeek(date, week) {
   document.querySelector('#showBlockChoices').onclick = () => { const choices = document.querySelector('#blockChoices'); choices.hidden = !choices.hidden; };
   document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
     week.blocks.push(button.dataset.addType === 'ink'
-      ? { id: uid(), type: 'ink', title: 'Handwritten Note', drawing: '', color: '#24414a' }
+      ? { id: uid(), type: 'ink', title: 'Handwritten Note', drawing: '', color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28 }
       : { id: uid(), type: 'text', title: 'Note', html: '', color: '#20211e' });
     putWeek(date, week);
     renderWeek(date);
@@ -647,6 +663,56 @@ function bindWeek(date, week) {
     renderWeek(date);
   };
   document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist, date));
+  bindBlockReordering(document.querySelector('#blocks'), week, persist);
+}
+
+function bindBlockReordering(container, week, persist) {
+  const saveOrder = () => {
+    const byId = new Map(week.blocks.map(block => [block.id, block]));
+    week.blocks = [...container.querySelectorAll('.note-block')].map(element => byId.get(element.dataset.block)).filter(Boolean);
+    persist();
+  };
+  const moveWithKeyboard = (element, direction) => {
+    const sibling = direction < 0 ? element.previousElementSibling : element.nextElementSibling;
+    if (!sibling) return;
+    if (direction < 0) container.insertBefore(element, sibling);
+    else container.insertBefore(sibling, element);
+    saveOrder();
+    element.querySelector('.drag-handle').focus();
+  };
+
+  container.querySelectorAll('.drag-handle').forEach(handle => {
+    const element = handle.closest('.note-block');
+    handle.onkeydown = event => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      moveWithKeyboard(element, event.key === 'ArrowUp' ? -1 : 1);
+    };
+    handle.onpointerdown = event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      element.classList.add('dragging');
+      handle.setPointerCapture(event.pointerId);
+      const move = pointerEvent => {
+        element.style.pointerEvents = 'none';
+        const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY)?.closest('.note-block');
+        element.style.pointerEvents = '';
+        if (!target || target === element || target.parentElement !== container) return;
+        const before = pointerEvent.clientY < target.getBoundingClientRect().top + target.offsetHeight / 2;
+        container.insertBefore(element, before ? target : target.nextElementSibling);
+      };
+      const finish = () => {
+        element.classList.remove('dragging');
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        saveOrder();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+    };
+  });
 }
 
 function bindBlock(element, week, persist, date) {
@@ -666,6 +732,26 @@ function bindBlock(element, week, persist, date) {
   };
   if (block.type === 'ink') {
     const canvas = element.querySelector('canvas');
+    const heightInput = element.querySelector('.canvas-height');
+    const paperSelect = element.querySelector('.paper-style');
+    const spacingInput = element.querySelector('.line-spacing');
+    heightInput.onchange = () => {
+      block.height = Math.min(1200, Math.max(150, Number(heightInput.value) || 300));
+      persist();
+      renderWeek(date);
+    };
+    paperSelect.onchange = () => {
+      block.paper = paperSelect.value === 'lined' ? 'lined' : 'blank';
+      spacingInput.disabled = block.paper !== 'lined';
+      canvas.classList.toggle('lined', block.paper === 'lined');
+      persist();
+    };
+    spacingInput.onchange = () => {
+      block.lineSpacing = Math.min(80, Math.max(12, Number(spacingInput.value) || 28));
+      spacingInput.value = String(block.lineSpacing);
+      canvas.style.setProperty('--line-spacing', `${block.lineSpacing}px`);
+      persist();
+    };
     let erasing = false;
     const eraserButton = element.querySelector('.eraser-toggle');
     eraserButton.onclick = () => {
@@ -895,7 +981,7 @@ function renderSharedWeek(date, token) {
       <header class="notebook-nav"><a href="?share=${token}" class="back">&#8592; Shared contents</a><span class="edition">Read only</span></header>
       <section class="week-heading"><p class="kicker">Published work update / ${date.getFullYear()}</p><h1>${weekLabel(date)}</h1><p class="shared-summary">${escapeHtml(week.summary || 'Untitled work week')}</p></section>
       <section class="blocks">${week.blocks.map(block => block.type === 'ink'
-        ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten Note')}</h2>${block.drawing ? `<img class="shared-ink" src="${block.drawing}" alt="Handwritten Note">` : '<p>No handwriting added.</p>'}</article>`
+        ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten Note')}</h2>${block.drawing ? `<img class="shared-ink${block.paper === 'lined' ? ' lined' : ''}" style="height:${inkHeight(block)}px;max-height:none;--line-spacing:${inkLineSpacing(block)}px" src="${block.drawing}" alt="Handwritten Note">` : '<p>No handwriting added.</p>'}</article>`
         : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Note')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
     </main>`;
 }
