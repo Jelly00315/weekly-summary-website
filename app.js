@@ -123,7 +123,7 @@ async function loadCloudState() {
   if (error) throw error;
   if (data && data.content) cloudState = data.content;
   else {
-    cloudState = collectLocalState();
+    cloudState = { settings: defaultSettings(), weeks: {} };
     const { error: insertError } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState });
     if (insertError) throw insertError;
   }
@@ -147,6 +147,17 @@ function queueCloudSave() {
     const nextStatus = document.querySelector('#saveStatus');
     if (nextStatus) nextStatus.textContent = error ? 'Cloud save failed' : 'Saved to cloud';
   }, 550);
+}
+
+async function saveCloudNow() {
+  if (!cloudState || !currentUser) return null;
+  clearTimeout(saveTimer);
+  const status = document.querySelector('#saveStatus');
+  if (status) status.textContent = 'Saving...';
+  const { error } = await db.from('notebooks').upsert({ user_id: currentUser.id, content: cloudState, updated_at: new Date().toISOString() });
+  const nextStatus = document.querySelector('#saveStatus');
+  if (nextStatus) nextStatus.textContent = error ? 'Cloud save failed' : 'Saved to cloud';
+  return error;
 }
 
 function removeWeek(date) {
@@ -307,15 +318,27 @@ function addWeek(year) {
   renderHome();
 }
 
-function deleteListedWeek(key) {
+async function deleteListedWeek(key) {
   const date = monday(new Date(`${key}T12:00:00`));
   if (!confirm(`Remove ${weekLabel(date)} and delete all of its notes? This cannot be undone.`)) return;
+  const previousState = cloudState ? JSON.parse(JSON.stringify(cloudState)) : null;
   const year = weekYear(date);
   const settings = getSettings();
   settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: listedWeeks(year).map(iso).filter(value => value !== key) };
   settings.highlightedWeeks = (settings.highlightedWeeks || []).filter(value => value !== key);
-  putSettings(settings);
-  removeWeek(date);
+  if (cloudState) {
+    cloudState.settings = settings;
+    delete cloudState.weeks[key];
+    const error = await saveCloudNow();
+    if (error) {
+      cloudState = previousState;
+      alert(`The week was not deleted because the cloud save failed: ${error.message}`);
+      renderHome();
+      return;
+    }
+  }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* cloud copy is authoritative */ }
+  localStorage.removeItem(`${WEEK_PREFIX}${key}`);
   renderHome();
 }
 
@@ -525,7 +548,7 @@ function renderWelcome(message = '') {
       </section>
     </main>`;
   document.querySelector('#googleLogin').onclick = async () => {
-    const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+    const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } } });
     if (error) alert(error.message);
   };
 }
