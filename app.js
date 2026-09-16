@@ -31,6 +31,8 @@ function defaultSettings() {
     years: [year - 2, year - 1, year],
     background: '#f4f0e7',
     backgroundHistory: [],
+    weekIndex: {},
+    highlightedWeeks: [],
     fontName: 'Times New Roman',
     fontData: '',
     headline: 'Research, week by week.',
@@ -149,6 +151,18 @@ function weeksIn(year) {
   return result;
 }
 
+function weekYear(date) {
+  return addDays(monday(date), 3).getFullYear();
+}
+
+function listedWeeks(year) {
+  const saved = getSettings().weekIndex && getSettings().weekIndex[String(year)];
+  if (!Array.isArray(saved)) return weeksIn(year);
+  return [...new Set(saved)].map(value => monday(new Date(`${value}T12:00:00`)))
+    .filter(date => !Number.isNaN(date.getTime()) && weekYear(date) === year)
+    .sort((a, b) => a - b);
+}
+
 async function applyFont(settings) {
   if (settings.fontData) {
     try {
@@ -199,11 +213,15 @@ function renderHome() {
   document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
   document.querySelector('#shareNotebook').onclick = openShareDialog;
   document.querySelectorAll('[data-delete-year]').forEach(button => button.onclick = () => deleteYear(Number(button.dataset.deleteYear)));
-  document.querySelectorAll('[data-week]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.week}`; });
+  document.querySelectorAll('[data-add-week]').forEach(button => button.onclick = () => addWeek(Number(button.dataset.addWeek)));
+  document.querySelectorAll('[data-week-open]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.weekOpen}`; });
+  document.querySelectorAll('[data-remove-week]').forEach(button => button.onclick = () => deleteListedWeek(button.dataset.removeWeek));
+  document.querySelectorAll('[data-highlight-week]').forEach(button => button.onclick = () => toggleWeekHighlight(button.dataset.highlightWeek));
 }
 
 function renderYear(year, index) {
-  const entries = weeksIn(year);
+  const entries = listedWeeks(year);
+  const highlighted = new Set(getSettings().highlightedWeeks || []);
   const written = entries.filter(date => { const week = getWeek(date); return week.summary || (week.blocks || []).some(block => block.html || block.drawing); }).length;
   return `
     <section class="year-chapter">
@@ -211,12 +229,15 @@ function renderYear(year, index) {
         <span class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</span>
         <h2>${year}</h2>
         <span class="year-count">${written} written weeks</span>
+        <button class="add-week" data-add-week="${year}" aria-label="Add a week to ${year}">+ Add week</button>
         <button class="delete-year" data-delete-year="${year}" aria-label="Delete ${year}">- Remove year</button>
       </header>
       <div class="chapters">
         ${entries.map((date, index) => {
           const week = getWeek(date);
-          return `<button class="chapter" data-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Open</span></button>`;
+          const key = iso(date);
+          const isHighlighted = highlighted.has(key);
+          return `<div class="chapter${isHighlighted ? ' highlighted' : ''}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><button class="chapter-main" data-week-open="${key}"><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Open</span></button><button class="highlight-week" data-highlight-week="${key}" aria-pressed="${isHighlighted}" title="${isHighlighted ? 'Remove highlight' : 'Highlight important week'}">${isHighlighted ? 'Important' : 'Highlight'}</button><button class="remove-week" data-remove-week="${key}" aria-label="Remove week ${weekLabel(date)}">-</button></div>`;
         }).join('')}
       </div>
     </section>`;
@@ -239,15 +260,58 @@ function addYear() {
   if (!Number.isInteger(year) || year < 1900 || year > 2200) return alert('Please enter a year between 1900 and 2200.');
   if (settings.years.includes(year)) return alert(`${year} is already in your notebook.`);
   settings.years.push(year);
+  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: [] };
+  putSettings(settings);
+  renderHome();
+}
+
+function addWeek(year) {
+  const answer = prompt(`Enter any date in the week you want to add to ${year} (YYYY-MM-DD):`, `${year}-01-01`);
+  if (answer === null) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(answer)) return alert('Please enter the date as YYYY-MM-DD.');
+  const requested = new Date(`${answer}T12:00:00`);
+  const [inputYear, inputMonth, inputDay] = answer.split('-').map(Number);
+  if (Number.isNaN(requested.getTime()) || requested.getFullYear() !== inputYear || requested.getMonth() + 1 !== inputMonth || requested.getDate() !== inputDay) return alert('That date is not valid.');
+  const date = monday(requested);
+  if (weekYear(date) !== year) return alert(`That week belongs to the ${weekYear(date)} weekly calendar. Please add it under ${weekYear(date)}.`);
+  const key = iso(date);
+  const settings = getSettings();
+  const weeks = listedWeeks(year).map(iso);
+  if (weeks.includes(key)) return alert(`${weekLabel(date)} already exists in ${year}.`);
+  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: [...weeks, key].sort() };
+  putSettings(settings);
+  renderHome();
+}
+
+function deleteListedWeek(key) {
+  const date = monday(new Date(`${key}T12:00:00`));
+  if (!confirm(`Remove ${weekLabel(date)} and delete all of its notes? This cannot be undone.`)) return;
+  const year = weekYear(date);
+  const settings = getSettings();
+  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: listedWeeks(year).map(iso).filter(value => value !== key) };
+  settings.highlightedWeeks = (settings.highlightedWeeks || []).filter(value => value !== key);
+  putSettings(settings);
+  removeWeek(date);
+  renderHome();
+}
+
+function toggleWeekHighlight(key) {
+  const settings = getSettings();
+  const highlighted = new Set(settings.highlightedWeeks || []);
+  if (highlighted.has(key)) highlighted.delete(key); else highlighted.add(key);
+  settings.highlightedWeeks = [...highlighted];
   putSettings(settings);
   renderHome();
 }
 
 function deleteYear(year) {
   if (!confirm(`Delete ${year} and every saved week inside it? This cannot be undone.`)) return;
-  weeksIn(year).forEach(removeWeek);
+  listedWeeks(year).forEach(removeWeek);
   const settings = getSettings();
   settings.years = settings.years.filter(item => item !== year);
+  settings.weekIndex = { ...(settings.weekIndex || {}) };
+  delete settings.weekIndex[String(year)];
+  settings.highlightedWeeks = (settings.highlightedWeeks || []).filter(key => weekYear(new Date(`${key}T12:00:00`)) !== year);
   putSettings(settings);
   renderHome();
 }
@@ -265,7 +329,7 @@ function renderWeek(date) {
         <span id="saveStatus">Saved to cloud</span>
       </header>
       <section class="week-heading">
-        <p class="kicker">Research weekly update / ${date.getFullYear()}</p>
+        <p class="kicker">Weekly update / ${date.getFullYear()}</p>
         <h1>${weekLabel(date)}</h1>
         <input id="weekSummary" maxlength="180" value="${escapeHtml(week.summary)}" placeholder="One-sentence finding or focus for this week">
       </section>
@@ -329,11 +393,7 @@ function bindWeek(date, week) {
     putWeek(date, week);
     renderWeek(date);
   });
-  document.querySelector('#deleteWeek').onclick = () => {
-    if (!confirm(`Delete the entire week ${weekLabel(date)}? This cannot be undone.`)) return;
-    removeWeek(date);
-    location.href = './';
-  };
+  document.querySelector('#deleteWeek').onclick = () => deleteListedWeek(iso(date));
   document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
   document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist));
 }
@@ -457,7 +517,7 @@ function renderSharedHome(token) {
       <section class="cover"><p class="kicker">Published research record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
       <section class="contents">${years.map((year, yearIndex) => `
         <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(yearIndex + 1).padStart(2, '0')}</span><h2>${year}</h2></header>
-        <div class="chapters">${weeksIn(year).map((date, index) => { const week = getWeek(date); return `<button class="chapter" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Read</span></button>`; }).join('')}</div></section>`).join('')}</section>
+        <div class="chapters">${listedWeeks(year).map((date, index) => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
     </main>`;
   document.querySelectorAll('[data-shared-week]').forEach(button => button.onclick = () => { location.href = `?share=${token}&week=${button.dataset.sharedWeek}`; });
 }
