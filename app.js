@@ -544,7 +544,7 @@ function renderWeek(date) {
         <h1>${weekLabel(date)}</h1>
         <input id="weekSummary" maxlength="180" value="${escapeHtml(week.summary)}" placeholder="One-sentence finding or focus for this week">
       </section>
-      <section id="blocks" class="blocks">${week.blocks.map(block => renderBlock(block, settings)).join('')}</section>
+      <section id="blocks" class="blocks">${week.blocks.map((block, index) => renderBlock(block, settings, index, week.blocks.length)).join('')}</section>
       <section class="add-block">
         <button id="showBlockChoices" class="add-block-button">+ Add block</button>
         <div id="blockChoices" class="block-choices" hidden>
@@ -600,12 +600,12 @@ function inkLineSpacing(block) {
   return Math.min(80, Math.max(12, Number(block.lineSpacing) || 28));
 }
 
-function renderBlock(block, settings) {
-  const dragHandle = '<button type="button" class="drag-handle" aria-label="Drag to reorder block" title="Drag to reorder; use arrow keys for keyboard reordering">⋮⋮</button>';
+function renderBlock(block, settings, index, total) {
+  const orderControls = `<div class="block-order"><label>Block <input class="block-position" type="number" min="1" max="${total}" value="${index + 1}" aria-label="Block position"></label><button type="button" class="move-block-up" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="move-block-down" ${index === total - 1 ? 'disabled' : ''}>Down</button></div>`;
   if (block.type === 'ink') return `
     <article class="note-block ink-block" data-block="${block.id}">
       <header class="block-header">
-        ${dragHandle}
+        ${orderControls}
         <input class="block-title" value="${escapeHtml(block.title || 'Handwritten Note')}" aria-label="Block title">
         <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><label>Height <input class="canvas-height" type="number" min="150" max="1200" step="25" value="${inkHeight(block)}"></label><label>Paper <select class="paper-style"><option value="blank"${block.paper !== 'lined' ? ' selected' : ''}>Blank</option><option value="lined"${block.paper === 'lined' ? ' selected' : ''}>Horizontal lines</option></select></label><label>Line gap <input class="line-spacing" type="number" min="12" max="80" value="${inkLineSpacing(block)}" ${block.paper === 'lined' ? '' : 'disabled'}></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
       </header>
@@ -615,7 +615,7 @@ function renderBlock(block, settings) {
   return `
     <article class="note-block text-block" data-block="${block.id}">
       <header class="block-header">
-        ${dragHandle}
+        ${orderControls}
         <input class="block-title" value="${escapeHtml(block.title || 'Note')}" aria-label="Block title">
         <div class="block-tools"><button class="download-markdown">Download .md</button><button class="remove-block">Delete</button></div>
       </header>
@@ -663,66 +663,38 @@ function bindWeek(date, week) {
     renderWeek(date);
   };
   document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist, date));
-  bindBlockReordering(document.querySelector('#blocks'), week, persist);
 }
 
-function bindBlockReordering(container, week, persist) {
-  const saveOrder = () => {
-    const byId = new Map(week.blocks.map(block => [block.id, block]));
-    week.blocks = [...container.querySelectorAll('.note-block')].map(element => byId.get(element.dataset.block)).filter(Boolean);
-    persist();
-  };
-  const moveWithKeyboard = (element, direction) => {
-    const sibling = direction < 0 ? element.previousElementSibling : element.nextElementSibling;
-    if (!sibling) return;
-    if (direction < 0) container.insertBefore(element, sibling);
-    else container.insertBefore(sibling, element);
-    saveOrder();
-    element.querySelector('.drag-handle').focus();
-  };
-
-  container.querySelectorAll('.drag-handle').forEach(handle => {
-    const element = handle.closest('.note-block');
-    handle.onkeydown = event => {
-      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-      event.preventDefault();
-      moveWithKeyboard(element, event.key === 'ArrowUp' ? -1 : 1);
-    };
-    handle.onpointerdown = event => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      element.classList.add('dragging');
-      handle.setPointerCapture(event.pointerId);
-      const move = pointerEvent => {
-        element.style.pointerEvents = 'none';
-        const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY)?.closest('.note-block');
-        element.style.pointerEvents = '';
-        if (!target || target === element || target.parentElement !== container) return;
-        const before = pointerEvent.clientY < target.getBoundingClientRect().top + target.offsetHeight / 2;
-        container.insertBefore(element, before ? target : target.nextElementSibling);
-      };
-      const finish = () => {
-        element.classList.remove('dragging');
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', finish);
-        handle.removeEventListener('pointercancel', finish);
-        saveOrder();
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', finish);
-      handle.addEventListener('pointercancel', finish);
-    };
-  });
+function moveBlock(week, blockId, requestedPosition, persist, date) {
+  const currentIndex = week.blocks.findIndex(block => block.id === blockId);
+  if (currentIndex < 0) return;
+  const targetIndex = Math.min(week.blocks.length - 1, Math.max(0, requestedPosition - 1));
+  if (currentIndex === targetIndex) return renderWeek(date);
+  const [movedBlock] = week.blocks.splice(currentIndex, 1);
+  week.blocks.splice(targetIndex, 0, movedBlock);
+  persist();
+  renderWeek(date);
 }
 
 function bindBlock(element, week, persist, date) {
   const block = week.blocks.find(item => item.id === element.dataset.block);
+  const currentIndex = () => week.blocks.findIndex(item => item.id === block.id);
+  const positionInput = element.querySelector('.block-position');
+  positionInput.onchange = () => moveBlock(week, block.id, Number(positionInput.value) || currentIndex() + 1, persist, date);
+  positionInput.onkeydown = event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      positionInput.blur();
+    }
+  };
+  element.querySelector('.move-block-up').onclick = () => moveBlock(week, block.id, currentIndex(), persist, date);
+  element.querySelector('.move-block-down').onclick = () => moveBlock(week, block.id, currentIndex() + 2, persist, date);
   element.querySelector('.block-title').oninput = e => { block.title = e.target.value; persist(); };
   element.querySelector('.remove-block').onclick = () => {
     if (!confirm(`Delete “${block.title || 'this block'}”? This cannot be undone.`)) return;
     week.blocks = week.blocks.filter(item => item.id !== block.id);
-    element.remove();
     persist();
+    renderWeek(date);
   };
   const color = element.querySelector('.block-color');
   color.oninput = e => {

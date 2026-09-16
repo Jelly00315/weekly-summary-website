@@ -13,7 +13,7 @@ Features:
 - Weeks listed chronologically from the beginning of each year
 - OneNote-style typed and pressure-sensitive handwriting blocks
 - Stroke eraser for handwriting blocks
-- Drag-and-drop block ordering with keyboard arrow support
+- Numbered block ordering with Up/Down controls and direct position entry
 - Resizable handwriting paper with optional horizontal lines and adjustable spacing
 - Add, rename, recolor, and safely delete individual blocks
 - Toggleable bold, italic, and highlight formatting for selected text, plus lists, free text sizing, font selection (including 宋体/SimSun), and device-local font upload
