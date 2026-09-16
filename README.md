@@ -11,7 +11,7 @@ Features:
 - Work-update structure for completed work and the coming week's plan
 - Add or safely remove complete year chapters
 - Weeks listed chronologically from the beginning of each year
-- OneNote-style typed and pressure-sensitive handwriting blocks
+- OneNote-style typed and pressure-sensitive handwriting blocks with adjustable pen width and sensitivity
 - Stroke eraser for handwriting blocks
 - Numbered block ordering with Up/Down controls and direct position entry
 - Resizable handwriting paper with optional horizontal lines and adjustable spacing

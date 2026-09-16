@@ -101,14 +101,16 @@ function normalizeWeek(value) {
           drawing: block.drawing || '',
           height: Math.min(1200, Math.max(150, Number(block.height) || 300)),
           paper: block.paper === 'lined' ? 'lined' : 'blank',
-          lineSpacing: Math.min(80, Math.max(12, Number(block.lineSpacing) || 28))
+          lineSpacing: Math.min(80, Math.max(12, Number(block.lineSpacing) || 28)),
+          penWidth: Math.min(5, Math.max(.1, Number(block.penWidth) || .5)),
+          pressureSensitivity: Math.min(100, Math.max(0, Number.isFinite(Number(block.pressureSensitivity)) ? Number(block.pressureSensitivity) : 65))
         } : { html: block.html || '' })
       };
     });
   } else {
     if (old.body || old.privateBody) blocks.push({ id: uid(), type: 'text', title: 'Progress & results', html: old.privateBody || old.body, color: '#20211e' });
     if (old.publicBody) blocks.push({ id: uid(), type: 'text', title: 'Shared notes', html: old.publicBody, color: '#20211e' });
-    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten Note', drawing: old.drawing, color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28 });
+    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten Note', drawing: old.drawing, color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28, penWidth: .5, pressureSensitivity: 65 });
   }
 
   return { ...old, summary: typeof old.summary === 'string' ? old.summary : '', blocks: blocks.length ? blocks : defaultBlocks() };
@@ -600,6 +602,15 @@ function inkLineSpacing(block) {
   return Math.min(80, Math.max(12, Number(block.lineSpacing) || 28));
 }
 
+function inkPenWidth(block) {
+  return Math.min(5, Math.max(.1, Number(block.penWidth) || .5));
+}
+
+function inkPressureSensitivity(block) {
+  const value = Number(block.pressureSensitivity);
+  return Math.min(100, Math.max(0, Number.isFinite(value) ? value : 65));
+}
+
 function renderBlock(block, settings, index, total) {
   const orderControls = `<div class="block-order"><label>Block <input class="block-position" type="number" min="1" max="${total}" value="${index + 1}" aria-label="Block position"></label><button type="button" class="move-block-up" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="move-block-down" ${index === total - 1 ? 'disabled' : ''}>Down</button></div>`;
   if (block.type === 'ink') return `
@@ -607,10 +618,10 @@ function renderBlock(block, settings, index, total) {
       <header class="block-header">
         ${orderControls}
         <input class="block-title" value="${escapeHtml(block.title || 'Handwritten Note')}" aria-label="Block title">
-        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><label>Height <input class="canvas-height" type="number" min="150" max="1200" step="25" value="${inkHeight(block)}"></label><label>Paper <select class="paper-style"><option value="blank"${block.paper !== 'lined' ? ' selected' : ''}>Blank</option><option value="lined"${block.paper === 'lined' ? ' selected' : ''}>Horizontal lines</option></select></label><label>Line gap <input class="line-spacing" type="number" min="12" max="80" value="${inkLineSpacing(block)}" ${block.paper === 'lined' ? '' : 'disabled'}></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
+        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><label>Pen mm <input class="pen-width" type="number" min="0.1" max="5" step="0.1" value="${inkPenWidth(block)}"></label><label class="pressure-control">Sensitivity <input class="pressure-sensitivity" type="range" min="0" max="100" step="5" value="${inkPressureSensitivity(block)}"><output>${inkPressureSensitivity(block)}%</output></label><label>Height <input class="canvas-height" type="number" min="150" max="1200" step="25" value="${inkHeight(block)}"></label><label>Paper <select class="paper-style"><option value="blank"${block.paper !== 'lined' ? ' selected' : ''}>Blank</option><option value="lined"${block.paper === 'lined' ? ' selected' : ''}>Horizontal lines</option></select></label><label>Line gap <input class="line-spacing" type="number" min="12" max="80" value="${inkLineSpacing(block)}" ${block.paper === 'lined' ? '' : 'disabled'}></label><button class="eraser-toggle" aria-pressed="false">Eraser</button><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
       </header>
       <canvas class="ink-canvas${block.paper === 'lined' ? ' lined' : ''}" style="height:${inkHeight(block)}px;--line-spacing:${inkLineSpacing(block)}px"></canvas>
-      <p class="ink-tip">Pressure-sensitive with a compatible stylus. Select Eraser to remove individual strokes.</p>
+      <p class="ink-tip">Pen width and pressure sensitivity apply to new strokes. Select Eraser to remove individual strokes.</p>
     </article>`;
   return `
     <article class="note-block text-block" data-block="${block.id}">
@@ -647,7 +658,7 @@ function bindWeek(date, week) {
   document.querySelector('#showBlockChoices').onclick = () => { const choices = document.querySelector('#blockChoices'); choices.hidden = !choices.hidden; };
   document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
     week.blocks.push(button.dataset.addType === 'ink'
-      ? { id: uid(), type: 'ink', title: 'Handwritten Note', drawing: '', color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28 }
+      ? { id: uid(), type: 'ink', title: 'Handwritten Note', drawing: '', color: '#24414a', height: 300, paper: 'blank', lineSpacing: 28, penWidth: .5, pressureSensitivity: 65 }
       : { id: uid(), type: 'text', title: 'Note', html: '', color: '#20211e' });
     putWeek(date, week);
     renderWeek(date);
@@ -707,6 +718,19 @@ function bindBlock(element, week, persist, date) {
     const heightInput = element.querySelector('.canvas-height');
     const paperSelect = element.querySelector('.paper-style');
     const spacingInput = element.querySelector('.line-spacing');
+    const penWidthInput = element.querySelector('.pen-width');
+    const sensitivityInput = element.querySelector('.pressure-sensitivity');
+    const sensitivityOutput = element.querySelector('.pressure-control output');
+    penWidthInput.onchange = () => {
+      block.penWidth = Math.min(5, Math.max(.1, Number(penWidthInput.value) || .5));
+      penWidthInput.value = String(block.penWidth);
+      persist();
+    };
+    sensitivityInput.oninput = () => {
+      block.pressureSensitivity = Math.min(100, Math.max(0, Number(sensitivityInput.value) || 0));
+      sensitivityOutput.value = `${block.pressureSensitivity}%`;
+      persist();
+    };
     heightInput.onchange = () => {
       block.height = Math.min(1200, Math.max(150, Number(heightInput.value) || 300));
       persist();
@@ -856,7 +880,7 @@ function setupCanvas(canvas, block, persist, isErasing) {
   }
   let active = false;
   let last;
-  const point = event => { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: Math.max(.12, event.pointerType === 'pen' ? event.pressure : .5) }; };
+  const point = event => { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: event.pointerType === 'pen' ? Math.min(1, Math.max(.05, event.pressure)) : .5 }; };
   canvas.onpointerdown = event => { active = true; last = point(event); canvas.setPointerCapture(event.pointerId); };
   canvas.onpointermove = event => {
     if (!active) return;
@@ -865,7 +889,10 @@ function setupCanvas(canvas, block, persist, isErasing) {
     const erasing = isErasing();
     context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
     context.strokeStyle = erasing ? '#000' : block.color;
-    context.lineWidth = erasing ? 9 + next.pressure * 18 : 1 + next.pressure * 5.5;
+    const baseWidth = inkPenWidth(block) * (96 / 25.4);
+    const sensitivity = inkPressureSensitivity(block) / 100;
+    const pressureFactor = Math.max(.2, 1 + (next.pressure - .5) * 1.5 * sensitivity);
+    context.lineWidth = erasing ? 9 + next.pressure * 18 : baseWidth * pressureFactor;
     context.moveTo(last.x, last.y);
     context.lineTo(next.x, next.y);
     context.stroke();
