@@ -57,16 +57,35 @@ function defaultBlocks() {
   ];
 }
 
-function getWeek(date) {
-  if (cloudState) return cloudState.weeks && cloudState.weeks[iso(date)] ? cloudState.weeks[iso(date)] : { summary: '', blocks: defaultBlocks() };
-  try {
-    const old = JSON.parse(localStorage.getItem(`${WEEK_PREFIX}${iso(date)}`) || '{}');
-    if (Array.isArray(old.blocks)) return { summary: '', ...old };
-    const blocks = [];
+function normalizeWeek(value) {
+  const old = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  let blocks = [];
+
+  if (Array.isArray(old.blocks)) {
+    blocks = old.blocks.filter(block => block && typeof block === 'object').map(block => {
+      const type = block.type === 'ink' ? 'ink' : 'text';
+      return {
+        ...block,
+        id: block.id || uid(),
+        type,
+        title: block.title || (type === 'ink' ? 'Handwritten notes' : 'Research notes'),
+        color: block.color || (type === 'ink' ? '#24414a' : '#20211e'),
+        ...(type === 'ink' ? { drawing: block.drawing || '' } : { html: block.html || '' })
+      };
+    });
+  } else {
     if (old.body || old.privateBody) blocks.push({ id: uid(), type: 'text', title: 'Progress & results', html: old.privateBody || old.body, color: '#20211e' });
     if (old.publicBody) blocks.push({ id: uid(), type: 'text', title: 'Shared notes', html: old.publicBody, color: '#20211e' });
     if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten notes', drawing: old.drawing, color: '#24414a' });
-    return { summary: old.summary || '', blocks: blocks.length ? blocks : defaultBlocks() };
+  }
+
+  return { ...old, summary: typeof old.summary === 'string' ? old.summary : '', blocks: blocks.length ? blocks : defaultBlocks() };
+}
+
+function getWeek(date) {
+  if (cloudState) return normalizeWeek(cloudState.weeks && cloudState.weeks[iso(date)]);
+  try {
+    return normalizeWeek(JSON.parse(localStorage.getItem(`${WEEK_PREFIX}${iso(date)}`) || '{}'));
   } catch { return { summary: '', blocks: defaultBlocks() }; }
 }
 
@@ -81,7 +100,7 @@ function collectLocalState() {
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
     if (!key || !key.startsWith(WEEK_PREFIX)) continue;
-    try { state.weeks[key.slice(WEEK_PREFIX.length)] = JSON.parse(localStorage.getItem(key)); } catch { /* ignore invalid legacy data */ }
+    try { state.weeks[key.slice(WEEK_PREFIX.length)] = normalizeWeek(JSON.parse(localStorage.getItem(key))); } catch { /* ignore invalid legacy data */ }
   }
   return state;
 }
@@ -97,6 +116,12 @@ async function loadCloudState() {
   }
   cloudState.settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
   cloudState.weeks = cloudState.weeks || {};
+  let migratedLegacyWeeks = false;
+  Object.entries(cloudState.weeks).forEach(([key, week]) => {
+    if (!Array.isArray(week && week.blocks)) migratedLegacyWeeks = true;
+    cloudState.weeks[key] = normalizeWeek(week);
+  });
+  if (migratedLegacyWeeks) queueCloudSave();
 }
 
 function queueCloudSave() {
@@ -179,7 +204,7 @@ function renderHome() {
 
 function renderYear(year, index) {
   const entries = weeksIn(year);
-  const written = entries.filter(date => { const week = getWeek(date); return week.summary || week.blocks.some(block => block.html || block.drawing); }).length;
+  const written = entries.filter(date => { const week = getWeek(date); return week.summary || (week.blocks || []).some(block => block.html || block.drawing); }).length;
   return `
     <section class="year-chapter">
       <header>
