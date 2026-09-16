@@ -1,4 +1,0 @@
-.editable { outline: 1px dashed transparent; outline-offset: 5px; }
-.editable:hover, .editable:focus { outline-color: var(--rust); background: #ffffff75; }
-.theme-picker { color: var(--muted); font: 10px "DM Mono", monospace; display: flex; align-items: center; gap: 7px; }
-.theme-picker input { width: 25px; height: 25px; padding: 1px; border: 1px solid var(--rule); background: transparent; cursor: pointer; }

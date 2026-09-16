@@ -6,6 +6,14 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
+- Research-update structure for completed work and the coming week's plan
+- Add or safely remove complete year chapters
+- Weeks listed chronologically from the beginning of each year
+- OneNote-style typed and pressure-sensitive handwriting blocks
+- Add, rename, recolor, and safely delete individual blocks
+- Bold, italic, highlight, lists, font selection, and local font upload
+- Background color picker with the three previously selected colors
+
 - Year-inclusive weekly labels, for example `2026 | 9.14 - 9.20`
 - Separate private and public writing blocks for each week
 - Private/public visibility setting for handwritten notes

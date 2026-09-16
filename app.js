@@ -1,22 +1,336 @@
-const app=document.querySelector('#app');
-const key=d=>`week-notes:${iso(d)}`;
-const siteKey='je-week-summary-settings';
-function settings(){try{return JSON.parse(localStorage.getItem(siteKey)||'{}')}catch(error){return {}}}
-function saveSettings(next){try{localStorage.setItem(siteKey,JSON.stringify(next))}catch(error){console.warn('Could not save site settings.',error)}}
-function iso(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10)}
-function add(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
-function monday(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
-function label(d){const e=add(d,6);return `${d.getFullYear()} . ${d.getMonth()+1}.${d.getDate()} - ${e.getMonth()+1}.${e.getDate()}`}
-function weekOnly(d){const e=add(d,6);return `${d.getMonth()+1}.${d.getDate()} - ${e.getMonth()+1}.${e.getDate()}`}
-function data(d){let n={};try{n=JSON.parse(localStorage.getItem(key(d))||'{}')}catch(error){console.warn('Local storage is unavailable; entries will not persist.',error)}return {summary:'',privateBody:n.body||'',publicBody:'',drawing:'',drawingVisibility:'private',...n}}
-function save(d,n){try{localStorage.setItem(key(d),JSON.stringify(n))}catch(error){console.warn('Could not save this entry locally.',error)}}
-function weeks(year){const first=monday(new Date(year,0,4)),out=[];for(let d=first;d.getFullYear()<=year||add(d,6).getFullYear()===year;d=add(d,7))out.push(new Date(d));return out}
-function escape(s=''){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function go(d){location.href=`?week=${iso(d)}`}
-function home(){const now=new Date(),years=[];for(let y=now.getFullYear();y>=2024;y--)years.push(y);app.innerHTML=`<main class="book"><header class="masthead"><a class="wordmark" href="./">Je<span>Week</span>Summary</a><span class="edition">A personal annual record</span></header><section class="cover"><p class="kicker">Table of contents</p><h1>Weeks, kept<br>like chapters.</h1><p class="intro">A quiet archive for the things that happened, the things that mattered, and the stories you choose to share.</p><button class="jump" onclick="document.querySelector('.year-chapter').scrollIntoView({behavior:'smooth'})">Open the book</button></section><nav class="contents">${years.map(year=>`<section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(now.getFullYear()-year+1).padStart(2,'0')}</span><h2>${year}</h2><span class="year-count">${weeks(year).filter(w=>{const n=data(w);return n.summary||n.privateBody||n.publicBody}).length} written weeks</span></header><div class="chapters">${weeks(year).reverse().map((w,i)=>{const n=data(w);return `<button class="chapter" onclick="go(new Date('${iso(w)}T12:00:00'))"><span class="chapter-no">${String(weeks(year).length-i).padStart(2,'0')}</span><span class="chapter-date">${weekOnly(w)}</span><span class="chapter-summary">${n.summary||'Untitled week'}</span><span class="arrow">Read</span></button>`}).join('')}</div></section>`).join('')}</nav></main>`}
-function toolbar(id){return `<div class="toolbar"><button data-c="bold" data-t="${id}"><b>B</b></button><button data-c="italic" data-t="${id}"><i>I</i></button><button data-c="hiliteColor" data-t="${id}">Highlight</button><button data-c="insertUnorderedList" data-t="${id}">List</button></div>`}
-function entry(d){const n=data(d);app.innerHTML=`<main class="entry-page"><header class="entry-nav"><a href="./" class="back">&#8592; Contents</a><a class="wordmark small" href="./">Je<span>Week</span>Summary</a><span id="status">Saved locally</span></header><section class="entry-title"><p class="kicker">CHAPTER / ${d.getFullYear()}</p><h1>${label(d)}</h1><input id="summary" value="${escape(n.summary)}" maxlength="180" placeholder="One sentence to remember this week" aria-label="Weekly summary"></section><section class="writing"><article class="writing-block private"><header><span>PRIVATE</span><h2>For your eyes</h2><p>Your unfiltered record. This content stays out of public exports.</p></header>${toolbar('private')}<div id="private" class="editor" contenteditable="true" data-placeholder="What really happened this week?">${n.privateBody}</div></article><article class="writing-block public"><header><span>PUBLIC</span><h2>For sharing</h2><p>The version you will be comfortable publishing or sending.</p></header>${toolbar('public')}<div id="public" class="editor" contenteditable="true" data-placeholder="What do you want to share?">${n.publicBody}</div></article></section><section class="ink"><header><div><p class="kicker">Handwriting</p><h2>Ink notes</h2></div><label>Visibility <select id="inkVisibility"><option value="private" ${n.drawingVisibility==='private'?'selected':''}>Private</option><option value="public" ${n.drawingVisibility==='public'?'selected':''}>Public</option></select></label><button id="clear">Clear</button></header><canvas id="canvas"></canvas><p>Stylus pressure changes the weight of each stroke. Touch and mouse use a steady line.</p></section><footer class="entry-actions"><button id="export">Export public .md</button><button class="primary" id="save">Save chapter</button></footer></main>`;bindEntry(d,n)}
-function bindEntry(d,n){document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{document.getElementById(b.dataset.t).focus();document.execCommand(b.dataset.c,false,b.dataset.c==='hiliteColor'?'#fff09a':null)});setCanvas(n.drawing);const persist=()=>{save(d,{summary:document.querySelector('#summary').value,privateBody:document.querySelector('#private').innerHTML,publicBody:document.querySelector('#public').innerHTML,drawing:document.querySelector('#canvas').toDataURL(),drawingVisibility:document.querySelector('#inkVisibility').value});document.querySelector('#status').textContent='Saved just now'};['summary','private','public','inkVisibility'].forEach(id=>document.querySelector('#'+id).oninput=persist);document.querySelector('#save').onclick=persist;document.querySelector('#clear').onclick=()=>{const c=document.querySelector('#canvas');c.getContext('2d').clearRect(0,0,c.width,c.height);persist()};document.querySelector('#export').onclick=()=>{const b=new Blob([`# ${label(d)}\n\n> ${document.querySelector('#summary').value}\n\n${document.querySelector('#public').innerText}`],{type:'text/markdown'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`${iso(d)}-public.md`;a.click()}}
-function setCanvas(src){const c=document.querySelector('#canvas'),ctx=c.getContext('2d'),r=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*r;c.height=h*r;ctx.scale(r,r);ctx.strokeStyle='#1c2c39';ctx.lineCap='round';if(src){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,w,h);img.src=src}let down=false,last;const pt=e=>{const box=c.getBoundingClientRect();return{x:e.clientX-box.left,y:e.clientY-box.top,p:Math.max(.14,e.pointerType==='pen'?e.pressure:.5)}};c.onpointerdown=e=>{down=true;last=pt(e);c.setPointerCapture(e.pointerId)};c.onpointermove=e=>{if(!down)return;const p=pt(e);ctx.beginPath();ctx.lineWidth=1+p.p*5.5;ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p};c.onpointerup=()=>{down=false;document.querySelector('#save').click()}}
-function enableHomeEditing(){const s=settings(),items=[['.wordmark','brand'],['.edition','edition'],['.cover h1','headline'],['.intro','intro']];items.forEach(([selector,name])=>{const el=document.querySelector(selector);if(!el)return;if(s[name])el.innerHTML=s[name];el.contentEditable='true';el.classList.add('editable');el.oninput=()=>{const next=settings();next[name]=el.innerHTML;saveSettings(next)}});document.querySelectorAll('.year-chapter h2').forEach(el=>{const year=el.textContent.trim();if(s.years&&s.years[year])el.innerHTML=s.years[year];el.contentEditable='true';el.classList.add('editable');el.oninput=()=>{const next=settings();next.years=next.years||{};next.years[year]=el.innerHTML;saveSettings(next)}});const pick=document.createElement('label');pick.className='theme-picker';pick.innerHTML=`Paper <input type="color" value="${s.background||'#f4f0e7'}">`;document.querySelector('.masthead').append(pick);pick.querySelector('input').oninput=e=>{const next=settings();next.background=e.target.value;saveSettings(next);document.documentElement.style.setProperty('--paper',next.background)};if(s.background)document.documentElement.style.setProperty('--paper',s.background)}
-const week=new URLSearchParams(location.search).get('week');if(week)entry(monday(new Date(`${week}T12:00:00`)));else{home();enableHomeEditing()}
+const app = document.querySelector('#app');
+const SETTINGS_KEY = 'je-week-summary-settings-v2';
+const WEEK_PREFIX = 'week-notes:';
+
+const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const iso = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
+const addDays = (d, amount) => { const next = new Date(d); next.setDate(next.getDate() + amount); return next; };
+const monday = d => { const next = new Date(d); next.setHours(0, 0, 0, 0); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return next; };
+const weekLabel = d => `${d.getMonth() + 1}.${d.getDate()} - ${addDays(d, 6).getMonth() + 1}.${addDays(d, 6).getDate()}`;
+const escapeHtml = (value = '') => value.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function defaultSettings() {
+  const year = new Date().getFullYear();
+  return {
+    years: [year - 2, year - 1, year],
+    background: '#f4f0e7',
+    backgroundHistory: [],
+    fontName: 'Times New Roman',
+    fontData: '',
+    headline: 'Research, week by week.',
+    intro: 'A working record of progress, results, questions, and the plan for the week ahead.'
+  };
+}
+
+function getSettings() {
+  try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+  catch { return defaultSettings(); }
+}
+
+function putSettings(settings) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+  catch { alert('This browser could not save that setting. Uploaded font files may be too large.'); }
+}
+
+function defaultBlocks() {
+  return [
+    { id: uid(), type: 'text', title: 'Progress & results', html: '', color: '#20211e' },
+    { id: uid(), type: 'text', title: 'Next week plan', html: '', color: '#20211e' }
+  ];
+}
+
+function getWeek(date) {
+  try {
+    const old = JSON.parse(localStorage.getItem(`${WEEK_PREFIX}${iso(date)}`) || '{}');
+    if (Array.isArray(old.blocks)) return { summary: '', ...old };
+    const blocks = [];
+    if (old.body || old.privateBody) blocks.push({ id: uid(), type: 'text', title: 'Progress & results', html: old.privateBody || old.body, color: '#20211e' });
+    if (old.publicBody) blocks.push({ id: uid(), type: 'text', title: 'Shared notes', html: old.publicBody, color: '#20211e' });
+    if (old.drawing) blocks.push({ id: uid(), type: 'ink', title: 'Handwritten notes', drawing: old.drawing, color: '#24414a' });
+    return { summary: old.summary || '', blocks: blocks.length ? blocks : defaultBlocks() };
+  } catch { return { summary: '', blocks: defaultBlocks() }; }
+}
+
+function putWeek(date, value) {
+  try { localStorage.setItem(`${WEEK_PREFIX}${iso(date)}`, JSON.stringify(value)); }
+  catch { alert('This week could not be saved. Try removing a large handwriting block.'); }
+}
+
+function weeksIn(year) {
+  const first = monday(new Date(year, 0, 4));
+  const nextFirst = monday(new Date(year + 1, 0, 4));
+  const result = [];
+  for (let date = first; date < nextFirst; date = addDays(date, 7)) result.push(new Date(date));
+  return result;
+}
+
+async function applyFont(settings) {
+  if (settings.fontData) {
+    try {
+      const face = new FontFace('Uploaded Research Font', `url(${settings.fontData})`);
+      await face.load();
+      document.fonts.add(face);
+      settings.fontName = 'Uploaded Research Font';
+    } catch { settings.fontName = 'Times New Roman'; }
+  }
+  document.documentElement.style.setProperty('--paper', settings.background);
+  document.documentElement.style.setProperty('--writing-font', `'${settings.fontName}', 'Times New Roman', serif`);
+}
+
+function renderHome() {
+  const settings = getSettings();
+  applyFont(settings);
+  const years = [...new Set(settings.years)].sort((a, b) => b - a);
+  app.className = '';
+  app.innerHTML = `
+    <main class="book">
+      <header class="masthead">
+        <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
+        <span class="edition">Research weekly update</span>
+        <div class="paper-control">
+          <label>Paper <input id="backgroundColor" type="color" value="${settings.background}"></label>
+          <div class="color-history" aria-label="Previous background colors">
+            ${settings.backgroundHistory.map(color => `<button class="color-chip" data-color="${color}" style="--chip:${color}" title="Use ${color}"></button>`).join('')}
+          </div>
+        </div>
+      </header>
+      <section class="cover">
+        <p class="kicker">Research notebook / contents</p>
+        <h1 contenteditable="true" id="headline">${settings.headline}</h1>
+        <p class="intro" contenteditable="true" id="intro">${settings.intro}</p>
+        <div class="year-actions"><button id="addYear" class="primary">+ Add year</button></div>
+      </section>
+      <section class="contents">
+        ${years.map((year, index) => renderYear(year, index)).join('')}
+      </section>
+    </main>`;
+
+  document.querySelector('#headline').oninput = e => { const next = getSettings(); next.headline = e.currentTarget.innerHTML; putSettings(next); };
+  document.querySelector('#intro').oninput = e => { const next = getSettings(); next.intro = e.currentTarget.innerHTML; putSettings(next); };
+  document.querySelector('#backgroundColor').onchange = e => selectBackground(e.target.value);
+  document.querySelectorAll('.color-chip').forEach(button => button.onclick = () => selectBackground(button.dataset.color));
+  document.querySelector('#addYear').onclick = addYear;
+  document.querySelectorAll('[data-delete-year]').forEach(button => button.onclick = () => deleteYear(Number(button.dataset.deleteYear)));
+  document.querySelectorAll('[data-week]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.week}`; });
+}
+
+function renderYear(year, index) {
+  const entries = weeksIn(year);
+  const written = entries.filter(date => { const week = getWeek(date); return week.summary || week.blocks.some(block => block.html || block.drawing); }).length;
+  return `
+    <section class="year-chapter">
+      <header>
+        <span class="chapter-number">CHAPTER ${String(index + 1).padStart(2, '0')}</span>
+        <h2>${year}</h2>
+        <span class="year-count">${written} written weeks</span>
+        <button class="delete-year" data-delete-year="${year}" aria-label="Delete ${year}">- Remove year</button>
+      </header>
+      <div class="chapters">
+        ${entries.map((date, index) => {
+          const week = getWeek(date);
+          return `<button class="chapter" data-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Open</span></button>`;
+        }).join('')}
+      </div>
+    </section>`;
+}
+
+function selectBackground(color) {
+  const settings = getSettings();
+  if (settings.background !== color) settings.backgroundHistory = [settings.background, ...settings.backgroundHistory.filter(item => item !== settings.background && item !== color)].slice(0, 3);
+  settings.background = color;
+  putSettings(settings);
+  renderHome();
+}
+
+function addYear() {
+  const settings = getSettings();
+  const suggested = Math.max(...settings.years) + 1;
+  const answer = prompt('Enter the year to add:', String(suggested));
+  if (answer === null) return;
+  const year = Number(answer);
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) return alert('Please enter a year between 1900 and 2200.');
+  if (settings.years.includes(year)) return alert(`${year} is already in your notebook.`);
+  settings.years.push(year);
+  putSettings(settings);
+  renderHome();
+}
+
+function deleteYear(year) {
+  if (!confirm(`Delete ${year} and every saved week inside it? This cannot be undone.`)) return;
+  weeksIn(year).forEach(date => localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`));
+  const settings = getSettings();
+  settings.years = settings.years.filter(item => item !== year);
+  putSettings(settings);
+  renderHome();
+}
+
+function renderWeek(date) {
+  const settings = getSettings();
+  const week = getWeek(date);
+  applyFont(settings);
+  app.className = '';
+  app.innerHTML = `
+    <main class="notebook">
+      <header class="notebook-nav">
+        <a href="./" class="back">&#8592; Contents</a>
+        <a class="wordmark small" href="./">Je<span>Week</span>Summary</a>
+        <span id="saveStatus">Saved locally</span>
+      </header>
+      <section class="week-heading">
+        <p class="kicker">Research weekly update / ${date.getFullYear()}</p>
+        <h1>${weekLabel(date)}</h1>
+        <input id="weekSummary" maxlength="180" value="${escapeHtml(week.summary)}" placeholder="One-sentence finding or focus for this week">
+      </section>
+      <section id="blocks" class="blocks">${week.blocks.map(block => renderBlock(block, settings)).join('')}</section>
+      <section class="add-block">
+        <button id="showBlockChoices" class="add-block-button">+ Add block</button>
+        <div id="blockChoices" class="block-choices" hidden>
+          <button data-add-type="text">Typing block</button>
+          <button data-add-type="ink">Handwriting block</button>
+        </div>
+      </section>
+      <footer class="notebook-footer">
+        <label class="font-upload">Writing font
+          <span>${escapeHtml(settings.fontName)}</span>
+          <input id="fontUpload" type="file" accept=".ttf,.otf,.woff,.woff2,font/*">
+        </label>
+        <button id="deleteWeek" class="danger">Delete week</button>
+        <button id="saveWeek" class="primary">Save update</button>
+      </footer>
+    </main>`;
+  bindWeek(date, week);
+}
+
+function renderBlock(block, settings) {
+  if (block.type === 'ink') return `
+    <article class="note-block ink-block" data-block="${block.id}">
+      <header class="block-header">
+        <input class="block-title" value="${escapeHtml(block.title || 'Handwritten notes')}" aria-label="Block title">
+        <div class="block-tools"><label>Ink <input class="block-color" type="color" value="${block.color || '#24414a'}"></label><button class="clear-ink">Clear</button><button class="remove-block">Delete</button></div>
+      </header>
+      <canvas class="ink-canvas"></canvas>
+      <p class="ink-tip">Pressure-sensitive with a compatible stylus.</p>
+    </article>`;
+  return `
+    <article class="note-block text-block" data-block="${block.id}">
+      <header class="block-header">
+        <input class="block-title" value="${escapeHtml(block.title || 'Research notes')}" aria-label="Block title">
+        <button class="remove-block">Delete</button>
+      </header>
+      <div class="toolbar">
+        <button data-command="bold"><b>B</b></button>
+        <button data-command="italic"><i>I</i></button>
+        <button data-command="hiliteColor">Highlight</button>
+        <button data-command="insertUnorderedList">List</button>
+        <select class="font-select" aria-label="Font"><option>${escapeHtml(settings.fontName)}</option><option>Times New Roman</option><option>Arial</option><option>Georgia</option><option>Courier New</option></select>
+        <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
+      </div>
+      <div class="text-editor" contenteditable="true" style="color:${block.color || '#20211e'}" data-placeholder="Type your research update here...">${block.html || ''}</div>
+    </article>`;
+}
+
+function bindWeek(date, week) {
+  const persist = () => { putWeek(date, week); const status = document.querySelector('#saveStatus'); if (status) status.textContent = 'Saved just now'; };
+  document.querySelector('#weekSummary').oninput = e => { week.summary = e.target.value; persist(); };
+  document.querySelector('#saveWeek').onclick = persist;
+  document.querySelector('#showBlockChoices').onclick = () => { const choices = document.querySelector('#blockChoices'); choices.hidden = !choices.hidden; };
+  document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
+    week.blocks.push(button.dataset.addType === 'ink'
+      ? { id: uid(), type: 'ink', title: 'Handwritten notes', drawing: '', color: '#24414a' }
+      : { id: uid(), type: 'text', title: 'Research notes', html: '', color: '#20211e' });
+    putWeek(date, week);
+    renderWeek(date);
+  });
+  document.querySelector('#deleteWeek').onclick = () => {
+    if (!confirm(`Delete the entire week ${weekLabel(date)}? This cannot be undone.`)) return;
+    localStorage.removeItem(`${WEEK_PREFIX}${iso(date)}`);
+    location.href = './';
+  };
+  document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
+  document.querySelectorAll('.note-block').forEach(element => bindBlock(element, week, persist));
+}
+
+function bindBlock(element, week, persist) {
+  const block = week.blocks.find(item => item.id === element.dataset.block);
+  element.querySelector('.block-title').oninput = e => { block.title = e.target.value; persist(); };
+  element.querySelector('.remove-block').onclick = () => {
+    if (!confirm(`Delete “${block.title || 'this block'}”? This cannot be undone.`)) return;
+    week.blocks = week.blocks.filter(item => item.id !== block.id);
+    element.remove();
+    persist();
+  };
+  const color = element.querySelector('.block-color');
+  color.oninput = e => {
+    block.color = e.target.value;
+    if (block.type === 'text') element.querySelector('.text-editor').style.color = block.color;
+    persist();
+  };
+  if (block.type === 'ink') {
+    const canvas = element.querySelector('canvas');
+    setupCanvas(canvas, block, persist);
+    element.querySelector('.clear-ink').onclick = () => {
+      if (!confirm('Clear this handwriting block? This cannot be undone.')) return;
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      block.drawing = '';
+      persist();
+    };
+    return;
+  }
+  const editor = element.querySelector('.text-editor');
+  editor.oninput = () => { block.html = editor.innerHTML; persist(); };
+  element.querySelectorAll('[data-command]').forEach(button => button.onclick = () => {
+    editor.focus();
+    const value = button.dataset.command === 'hiliteColor' ? '#fff09a' : null;
+    document.execCommand(button.dataset.command, false, value);
+    block.html = editor.innerHTML;
+    persist();
+  });
+  element.querySelector('.font-select').onchange = e => { editor.focus(); document.execCommand('fontName', false, e.target.value); block.html = editor.innerHTML; persist(); };
+}
+
+function setupCanvas(canvas, block, persist) {
+  const context = canvas.getContext('2d');
+  const ratio = devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  canvas.width = width * ratio;
+  canvas.height = height * ratio;
+  context.scale(ratio, ratio);
+  context.lineCap = 'round';
+  if (block.drawing) { const image = new Image(); image.onload = () => context.drawImage(image, 0, 0, width, height); image.src = block.drawing; }
+  let active = false;
+  let last;
+  const point = event => { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: Math.max(.12, event.pointerType === 'pen' ? event.pressure : .5) }; };
+  canvas.onpointerdown = event => { active = true; last = point(event); canvas.setPointerCapture(event.pointerId); };
+  canvas.onpointermove = event => {
+    if (!active) return;
+    const next = point(event);
+    context.beginPath();
+    context.strokeStyle = block.color;
+    context.lineWidth = 1 + next.pressure * 5.5;
+    context.moveTo(last.x, last.y);
+    context.lineTo(next.x, next.y);
+    context.stroke();
+    last = next;
+  };
+  canvas.onpointerup = () => { active = false; block.drawing = canvas.toDataURL(); persist(); };
+}
+
+function uploadFont(event, date) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 1500000) return alert('Please choose a font smaller than 1.5 MB so it can be saved in this browser.');
+  const reader = new FileReader();
+  reader.onload = () => {
+    const settings = getSettings();
+    settings.fontData = reader.result;
+    settings.fontName = 'Uploaded Research Font';
+    putSettings(settings);
+    renderWeek(date);
+  };
+  reader.readAsDataURL(file);
+}
+
+const selectedWeek = new URLSearchParams(location.search).get('week');
+if (selectedWeek) renderWeek(monday(new Date(`${selectedWeek}T12:00:00`)));
+else renderHome();
