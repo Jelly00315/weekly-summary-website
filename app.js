@@ -547,6 +547,7 @@ function renderBlock(block, settings) {
         <button data-command="hiliteColor">Highlight</button>
         <button data-command="insertUnorderedList">List</button>
         <select class="font-select" aria-label="Font">${fontOptions(settings)}</select>
+        <label class="font-size-control">Size <input class="font-size-input" type="number" min="6" max="144" value="17" aria-label="Font size in pixels"><button class="apply-font-size" type="button">Set</button></label>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
       </div>
       <div class="text-editor" contenteditable="true" style="color:${block.color || '#20211e'}" data-placeholder="Type your work update here...">${block.html || ''}</div>
@@ -642,6 +643,28 @@ function bindBlock(element, week, persist) {
   fontSelect.onchange = event => {
     restoreSelection();
     document.execCommand('fontName', false, event.target.value);
+    block.html = editor.innerHTML;
+    rememberSelection();
+    persist();
+  };
+  const sizeInput = element.querySelector('.font-size-input');
+  const sizeButton = element.querySelector('.apply-font-size');
+  sizeInput.onpointerdown = rememberSelection;
+  sizeButton.onmousedown = event => event.preventDefault();
+  sizeButton.onclick = () => {
+    const size = Math.min(144, Math.max(6, Number(sizeInput.value) || 17));
+    sizeInput.value = String(size);
+    restoreSelection();
+    const existingLargeFonts = [...editor.querySelectorAll('font[size="7"]')];
+    existingLargeFonts.forEach(node => node.dataset.existingSizeSeven = 'true');
+    document.execCommand('fontSize', false, '7');
+    editor.querySelectorAll('font[size="7"]:not([data-existing-size-seven])').forEach(node => {
+      const replacement = document.createElement('span');
+      replacement.style.fontSize = `${size}px`;
+      replacement.innerHTML = node.innerHTML;
+      node.replaceWith(replacement);
+    });
+    existingLargeFonts.forEach(node => delete node.dataset.existingSizeSeven);
     block.html = editor.innerHTML;
     rememberSelection();
     persist();
