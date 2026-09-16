@@ -8,7 +8,7 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
-- Research-update structure for completed work and the coming week's plan
+- Work-update structure for completed work and the coming week's plan
 - Add or safely remove complete year chapters
 - Weeks listed chronologically from the beginning of each year
 - OneNote-style typed and pressure-sensitive handwriting blocks

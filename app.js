@@ -35,14 +35,22 @@ function defaultSettings() {
     highlightedWeeks: [],
     fontName: 'Times New Roman',
     fontData: '',
-    headline: 'Research, week by week.',
+    headline: 'Work, week by week.',
     intro: 'A working record of progress, results, questions, and the plan for the week ahead.'
   };
 }
 
 function getSettings() {
-  if (cloudState) return { ...defaultSettings(), ...(cloudState.settings || {}) };
-  try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+  if (cloudState) {
+    const settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
+    if (settings.headline === 'Research, week by week.') settings.headline = 'Work, week by week.';
+    return settings;
+  }
+  try {
+    const settings = { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+    if (settings.headline === 'Research, week by week.') settings.headline = 'Work, week by week.';
+    return settings;
+  }
   catch { return defaultSettings(); }
 }
 
@@ -70,7 +78,7 @@ function normalizeWeek(value) {
         ...block,
         id: block.id || uid(),
         type,
-        title: block.title || (type === 'ink' ? 'Handwritten notes' : 'Research notes'),
+        title: block.title || (type === 'ink' ? 'Handwritten notes' : 'Work notes'),
         color: block.color || (type === 'ink' ? '#24414a' : '#20211e'),
         ...(type === 'ink' ? { drawing: block.drawing || '' } : { html: block.html || '' })
       };
@@ -166,10 +174,10 @@ function listedWeeks(year) {
 async function applyFont(settings) {
   if (settings.fontData) {
     try {
-      const face = new FontFace('Uploaded Research Font', `url(${settings.fontData})`);
+      const face = new FontFace('Uploaded Work Font', `url(${settings.fontData})`);
       await face.load();
       document.fonts.add(face);
-      settings.fontName = 'Uploaded Research Font';
+      settings.fontName = 'Uploaded Work Font';
     } catch { settings.fontName = 'Times New Roman'; }
   }
   document.documentElement.style.setProperty('--paper', settings.background);
@@ -185,17 +193,17 @@ function renderHome() {
     <main class="book">
       <header class="masthead">
         <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
-        <span class="edition">Research weekly update</span>
+        <span class="edition">Work weekly update</span>
         <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><button id="shareNotebook">Share</button><button id="logout">Log out</button></div>
         <div class="paper-control">
           <label>Paper <input id="backgroundColor" type="color" value="${settings.background}"></label>
           <div class="color-history" aria-label="Previous background colors">
-            ${settings.backgroundHistory.map(color => `<button class="color-chip" data-color="${color}" style="--chip:${color}" title="Use ${color}"></button>`).join('')}
+            ${settings.backgroundHistory.map(color => `<span class="saved-color"><button class="color-chip" data-color="${color}" style="--chip:${color}" title="Use ${color}" aria-label="Use saved color ${color}"></button><button class="delete-color" data-delete-color="${color}" title="Delete saved color" aria-label="Delete saved color ${color}">×</button></span>`).join('')}
           </div>
         </div>
       </header>
       <section class="cover">
-        <p class="kicker">Research notebook / contents</p>
+        <p class="kicker">Work weekly notebook / contents</p>
         <h1 contenteditable="true" id="headline">${settings.headline}</h1>
         <p class="intro" contenteditable="true" id="intro">${settings.intro}</p>
         <div class="year-actions"><button id="addYear" class="primary">+ Add year</button></div>
@@ -209,6 +217,7 @@ function renderHome() {
   document.querySelector('#intro').oninput = e => { const next = getSettings(); next.intro = e.currentTarget.innerHTML; putSettings(next); };
   document.querySelector('#backgroundColor').onchange = e => selectBackground(e.target.value);
   document.querySelectorAll('.color-chip').forEach(button => button.onclick = () => selectBackground(button.dataset.color));
+  document.querySelectorAll('[data-delete-color]').forEach(button => button.onclick = () => deleteSavedColor(button.dataset.deleteColor));
   document.querySelector('#addYear').onclick = addYear;
   document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
   document.querySelector('#shareNotebook').onclick = openShareDialog;
@@ -237,7 +246,7 @@ function renderYear(year, index) {
           const week = getWeek(date);
           const key = iso(date);
           const isHighlighted = highlighted.has(key);
-          return `<div class="chapter${isHighlighted ? ' highlighted' : ''}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><button class="chapter-main" data-week-open="${key}"><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">Open</span></button><button class="highlight-week" data-highlight-week="${key}" aria-pressed="${isHighlighted}" title="${isHighlighted ? 'Remove highlight' : 'Highlight important week'}">${isHighlighted ? 'Important' : 'Highlight'}</button><button class="remove-week" data-remove-week="${key}" aria-label="Remove week ${weekLabel(date)}">-</button></div>`;
+          return `<div class="chapter${isHighlighted ? ' highlighted' : ''}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><button class="chapter-main" data-week-open="${key}"><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">Open</span></button><button class="highlight-week" data-highlight-week="${key}" aria-pressed="${isHighlighted}" title="${isHighlighted ? 'Remove highlight' : 'Highlight important week'}">${isHighlighted ? 'Important' : 'Highlight'}</button><button class="remove-week" data-remove-week="${key}" aria-label="Remove week ${weekLabel(date)}">-</button></div>`;
         }).join('')}
       </div>
     </section>`;
@@ -247,6 +256,13 @@ function selectBackground(color) {
   const settings = getSettings();
   if (settings.background !== color) settings.backgroundHistory = [settings.background, ...settings.backgroundHistory.filter(item => item !== settings.background && item !== color)].slice(0, 3);
   settings.background = color;
+  putSettings(settings);
+  renderHome();
+}
+
+function deleteSavedColor(color) {
+  const settings = getSettings();
+  settings.backgroundHistory = settings.backgroundHistory.filter(item => item !== color);
   putSettings(settings);
   renderHome();
 }
@@ -366,7 +382,7 @@ function renderBlock(block, settings) {
   return `
     <article class="note-block text-block" data-block="${block.id}">
       <header class="block-header">
-        <input class="block-title" value="${escapeHtml(block.title || 'Research notes')}" aria-label="Block title">
+        <input class="block-title" value="${escapeHtml(block.title || 'Work notes')}" aria-label="Block title">
         <button class="remove-block">Delete</button>
       </header>
       <div class="toolbar">
@@ -377,7 +393,7 @@ function renderBlock(block, settings) {
         <select class="font-select" aria-label="Font"><option>${escapeHtml(settings.fontName)}</option><option>Times New Roman</option><option>Arial</option><option>Georgia</option><option>Courier New</option></select>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
       </div>
-      <div class="text-editor" contenteditable="true" style="color:${block.color || '#20211e'}" data-placeholder="Type your research update here...">${block.html || ''}</div>
+      <div class="text-editor" contenteditable="true" style="color:${block.color || '#20211e'}" data-placeholder="Type your work update here...">${block.html || ''}</div>
     </article>`;
 }
 
@@ -389,7 +405,7 @@ function bindWeek(date, week) {
   document.querySelectorAll('[data-add-type]').forEach(button => button.onclick = () => {
     week.blocks.push(button.dataset.addType === 'ink'
       ? { id: uid(), type: 'ink', title: 'Handwritten notes', drawing: '', color: '#24414a' }
-      : { id: uid(), type: 'text', title: 'Research notes', html: '', color: '#20211e' });
+      : { id: uid(), type: 'text', title: 'Work notes', html: '', color: '#20211e' });
     putWeek(date, week);
     renderWeek(date);
   });
@@ -493,7 +509,7 @@ function renderWelcome(message = '') {
     <main class="welcome">
       <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
       <section>
-        <p class="kicker">Research weekly notebook</p>
+        <p class="kicker">Work weekly notebook</p>
         <h1>Keep the work.<br>Plan what comes next.</h1>
         <p>Sign in to open your synchronized notebook on any phone or computer. A read-only sharing link opens a published notebook without an account.</p>
         ${message ? `<p class="welcome-error">${escapeHtml(message)}</p>` : ''}
@@ -514,10 +530,10 @@ function renderSharedHome(token) {
   app.innerHTML = `
     <main class="book shared-book">
       <header class="masthead"><a class="wordmark" href="./">Je<span>Week</span>Summary</a><span class="edition">Read-only shared notebook</span></header>
-      <section class="cover"><p class="kicker">Published research record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
+      <section class="cover"><p class="kicker">Published work record</p><h1>${safeRichHtml(settings.headline)}</h1><p class="intro">${safeRichHtml(settings.intro)}</p></section>
       <section class="contents">${years.map((year, yearIndex) => `
         <section class="year-chapter"><header><span class="chapter-number">CHAPTER ${String(yearIndex + 1).padStart(2, '0')}</span><h2>${year}</h2></header>
-        <div class="chapters">${listedWeeks(year).map((date, index) => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled research week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
+        <div class="chapters">${listedWeeks(year).map((date, index) => { const week = getWeek(date); const important = (settings.highlightedWeeks || []).includes(iso(date)); return `<button class="chapter shared-chapter${important ? ' highlighted' : ''}" data-shared-week="${iso(date)}"><span class="chapter-no">${String(index + 1).padStart(2, '0')}</span><span class="chapter-date">${weekLabel(date)}</span><span class="chapter-summary">${escapeHtml(week.summary || 'Untitled work week')}</span><span class="arrow">${important ? 'Important' : 'Read'}</span></button>`; }).join('')}</div></section>`).join('')}</section>
     </main>`;
   document.querySelectorAll('[data-shared-week]').forEach(button => button.onclick = () => { location.href = `?share=${token}&week=${button.dataset.sharedWeek}`; });
 }
@@ -530,10 +546,10 @@ function renderSharedWeek(date, token) {
   app.innerHTML = `
     <main class="notebook shared-notebook">
       <header class="notebook-nav"><a href="?share=${token}" class="back">&#8592; Shared contents</a><span class="edition">Read only</span></header>
-      <section class="week-heading"><p class="kicker">Published research update / ${date.getFullYear()}</p><h1>${weekLabel(date)}</h1><p class="shared-summary">${escapeHtml(week.summary || 'Untitled research week')}</p></section>
+      <section class="week-heading"><p class="kicker">Published work update / ${date.getFullYear()}</p><h1>${weekLabel(date)}</h1><p class="shared-summary">${escapeHtml(week.summary || 'Untitled work week')}</p></section>
       <section class="blocks">${week.blocks.map(block => block.type === 'ink'
         ? `<article class="note-block"><h2>${escapeHtml(block.title || 'Handwritten notes')}</h2>${block.drawing ? `<img class="shared-ink" src="${block.drawing}" alt="Handwritten notes">` : '<p>No handwriting added.</p>'}</article>`
-        : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Research notes')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
+        : `<article class="note-block shared-text"><h2>${escapeHtml(block.title || 'Work notes')}</h2><div style="color:${block.color || '#20211e'}">${block.html ? safeRichHtml(block.html) : '<p>No notes added.</p>'}</div></article>`).join('')}</section>
     </main>`;
 }
 
@@ -545,7 +561,7 @@ function uploadFont(event, date) {
   reader.onload = () => {
     const settings = getSettings();
     settings.fontData = reader.result;
-    settings.fontName = 'Uploaded Research Font';
+    settings.fontName = 'Uploaded Work Font';
     putSettings(settings);
     renderWeek(date);
   };
