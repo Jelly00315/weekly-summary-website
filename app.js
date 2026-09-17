@@ -92,7 +92,7 @@ function defaultSettings() {
 }
 
 function normalizeTodoSettings(settings) {
-  const statuses = new Set(['not-started', 'in-progress', 'waiting', 'done']);
+  const legacyProgress = { 'not-started': 'Not started', 'in-progress': 'In progress', waiting: 'Waiting', done: 'Done' };
   return {
     ...settings,
     todoVisible: Boolean(settings.todoVisible),
@@ -101,7 +101,7 @@ function normalizeTodoSettings(settings) {
       title: String(item.title || '').slice(0, 120),
       dueDate: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || '') ? item.dueDate : '',
       intro: String(item.intro || '').slice(0, 300),
-      status: statuses.has(item.status) ? item.status : 'not-started'
+      progress: String(item.progress || legacyProgress[item.status] || '').slice(0, 300)
     })) : []
   };
 }
@@ -415,29 +415,27 @@ function renderHome() {
   if (settings.todoVisible) bindTodoPanel();
 }
 
-const TODO_STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progress', waiting: 'Waiting', done: 'Done' };
-
 function renderTodoPanel(settings) {
   const today = iso(new Date());
   return `<section class="todo-panel" aria-labelledby="todoHeading">
-    <header><div><p class="kicker">Current reminders</p><h2 id="todoHeading">To-do list</h2></div><span>${settings.todos.filter(item => item.status !== 'done').length} remaining</span></header>
-    <form id="addTodo" class="todo-add-form">
+    <header><div><p class="kicker">Current reminders</p><h2 id="todoHeading">To-do list</h2></div><div class="todo-heading-actions"><span>${settings.todos.length} tasks</span><button id="showTodoForm" type="button" aria-label="Add task" title="Add task">+</button></div></header>
+    <form id="addTodo" class="todo-add-form" hidden>
       <label>Task<input name="title" maxlength="120" required placeholder="What needs to be done?"></label>
       <label>Due date<input name="dueDate" type="date" required></label>
       <label>Brief introduction<textarea name="intro" maxlength="300" rows="2" placeholder="A short reminder or next step"></textarea></label>
-      <label>Progress<select name="status">${Object.entries(TODO_STATUS_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
-      <button class="primary" type="submit">+ Add task</button>
+      <label>Progress<textarea name="progress" maxlength="300" rows="2" placeholder="For example: Start to read information"></textarea></label>
+      <button class="primary" type="submit">Add</button>
     </form>
     <div class="todo-list">${settings.todos.length ? settings.todos.map(item => {
-      const timing = item.status !== 'done' && item.dueDate && item.dueDate < today ? ' overdue' : item.status !== 'done' && item.dueDate === today ? ' due-today' : '';
-      return `<article class="todo-item status-${item.status}${timing}" data-todo-id="${item.id}">
+      const timing = item.dueDate && item.dueDate < today ? ' overdue' : item.dueDate === today ? ' due-today' : '';
+      return `<article class="todo-item${timing}" data-todo-id="${item.id}">
         <input class="todo-title" data-todo-field="title" maxlength="120" value="${escapeHtml(item.title)}" aria-label="Task title">
         <input data-todo-field="dueDate" type="date" value="${item.dueDate}" aria-label="Due date">
         <textarea data-todo-field="intro" maxlength="300" rows="2" aria-label="Brief introduction">${escapeHtml(item.intro)}</textarea>
-        <select data-todo-field="status" aria-label="Progress status">${Object.entries(TODO_STATUS_LABELS).map(([value, label]) => `<option value="${value}"${item.status === value ? ' selected' : ''}>${label}</option>`).join('')}</select>
+        <textarea class="todo-progress" data-todo-field="progress" maxlength="300" rows="2" aria-label="Progress">${escapeHtml(item.progress)}</textarea>
         <button type="button" class="delete-todo" aria-label="Delete ${escapeHtml(item.title || 'task')}">Delete</button>
       </article>`;
-    }).join('') : '<p class="todo-empty">No reminders yet. Add a homework item or project above.</p>'}</div>
+    }).join('') : '<p class="todo-empty">No reminders yet. Use + to add a task.</p>'}</div>
   </section>`;
 }
 
@@ -449,13 +447,18 @@ function toggleTodoPanel() {
 }
 
 function bindTodoPanel() {
+  document.querySelector('#showTodoForm').onclick = () => {
+    const form = document.querySelector('#addTodo');
+    form.hidden = !form.hidden;
+    if (!form.hidden) form.elements.title.focus();
+  };
   document.querySelector('#addTodo').onsubmit = event => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const title = String(form.get('title') || '').trim();
     if (!title) return alert('Please enter a task name.');
     const settings = getSettings();
-    settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), status: String(form.get('status') || 'not-started') });
+    settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), progress: String(form.get('progress') || '').trim() });
     putSettings(settings);
     renderHome();
   };
