@@ -101,7 +101,8 @@ function normalizeTodoSettings(settings) {
       title: String(item.title || '').slice(0, 120),
       dueDate: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || '') ? item.dueDate : '',
       intro: String(item.intro || '').slice(0, 300),
-      progress: String(item.progress || legacyProgress[item.status] || '').slice(0, 300)
+      progress: String(item.progress || legacyProgress[item.status] || '').slice(0, 300),
+      important: Boolean(item.important)
     })) : []
   };
 }
@@ -426,14 +427,15 @@ function renderTodoPanel(settings) {
       <label>Progress<textarea name="progress" maxlength="300" rows="2" placeholder="For example: Start to read information"></textarea></label>
       <button class="primary" type="submit">Add</button>
     </form>
-    <div class="todo-list">${settings.todos.length ? settings.todos.map(item => {
+    <div class="todo-list">${settings.todos.length ? settings.todos.map((item, index) => {
       const timing = item.dueDate && item.dueDate < today ? ' overdue' : item.dueDate === today ? ' due-today' : '';
-      return `<article class="todo-item${timing}" data-todo-id="${item.id}">
+      return `<article class="todo-item${timing}${item.important ? ' important' : ''}" data-todo-id="${item.id}">
+        <label class="todo-order-control">Order<input class="todo-order" type="number" min="1" max="${settings.todos.length}" value="${index + 1}" aria-label="Order for ${escapeHtml(item.title || 'task')}"></label>
         <input class="todo-title" data-todo-field="title" maxlength="120" value="${escapeHtml(item.title)}" aria-label="Task title">
         <input data-todo-field="dueDate" type="date" value="${item.dueDate}" aria-label="Due date">
         <textarea data-todo-field="intro" maxlength="300" rows="2" aria-label="Brief introduction">${escapeHtml(item.intro)}</textarea>
         <textarea class="todo-progress" data-todo-field="progress" maxlength="300" rows="2" aria-label="Progress">${escapeHtml(item.progress)}</textarea>
-        <button type="button" class="delete-todo" aria-label="Delete ${escapeHtml(item.title || 'task')}">Delete</button>
+        <div class="todo-item-actions"><button type="button" class="toggle-todo-important${item.important ? ' active' : ''}" aria-pressed="${item.important}" aria-label="${item.important ? 'Remove high priority from' : 'Mark as high priority:'} ${escapeHtml(item.title || 'task')}" title="${item.important ? 'Remove high priority' : 'Mark as high priority'}">!</button><button type="button" class="delete-todo" aria-label="Delete ${escapeHtml(item.title || 'task')}">Delete</button></div>
       </article>`;
     }).join('') : '<p class="todo-empty">No reminders yet. Use + to add a task.</p>'}</div>
   </section>`;
@@ -458,7 +460,7 @@ function bindTodoPanel() {
     const title = String(form.get('title') || '').trim();
     if (!title) return alert('Please enter a task name.');
     const settings = getSettings();
-    settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), progress: String(form.get('progress') || '').trim() });
+    settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), progress: String(form.get('progress') || '').trim(), important: false });
     putSettings(settings);
     renderHome();
   };
@@ -468,6 +470,29 @@ function bindTodoPanel() {
     const item = settings.todos.find(todo => todo.id === itemElement.dataset.todoId);
     if (!item) return;
     item[control.dataset.todoField] = control.value;
+    putSettings(settings);
+    renderHome();
+  });
+  document.querySelectorAll('.todo-order').forEach(control => control.onchange = () => {
+    const itemId = control.closest('[data-todo-id]').dataset.todoId;
+    const settings = getSettings();
+    const currentIndex = settings.todos.findIndex(todo => todo.id === itemId);
+    if (currentIndex < 0) return;
+    const requestedPosition = Number.parseInt(control.value, 10);
+    const targetIndex = Number.isFinite(requestedPosition)
+      ? Math.max(0, Math.min(settings.todos.length - 1, requestedPosition - 1))
+      : currentIndex;
+    const [movedItem] = settings.todos.splice(currentIndex, 1);
+    settings.todos.splice(targetIndex, 0, movedItem);
+    putSettings(settings);
+    renderHome();
+  });
+  document.querySelectorAll('.toggle-todo-important').forEach(button => button.onclick = () => {
+    const itemId = button.closest('[data-todo-id]').dataset.todoId;
+    const settings = getSettings();
+    const item = settings.todos.find(todo => todo.id === itemId);
+    if (!item) return;
+    item.important = !item.important;
     putSettings(settings);
     renderHome();
   });
