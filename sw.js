@@ -1,4 +1,4 @@
-const CACHE_NAME = 'je-week-summary-v9';
+const CACHE_NAME = 'je-week-summary-v10';
 const APP_SHELL = ['./', './index.html', './styles.css', './auth.css', './app.js', './manifest.webmanifest', './app-icon.svg'];
 const SUPABASE_CLIENT = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 

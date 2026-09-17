@@ -422,7 +422,7 @@ function renderTodoPanel(settings) {
     <header><div><p class="kicker">Current reminders</p><h2 id="todoHeading">To-do list</h2></div><div class="todo-heading-actions"><span>${settings.todos.length} tasks</span><button id="showTodoForm" type="button" aria-label="Add task" title="Add task">+</button></div></header>
     <form id="addTodo" class="todo-add-form" hidden>
       <label>Task<input name="title" maxlength="120" required placeholder="What needs to be done?"></label>
-      <label>Due date<input name="dueDate" type="date" required></label>
+      <label>Due date (optional)<input name="dueDate" type="date"></label>
       <label>Brief introduction<textarea name="intro" maxlength="300" rows="2" placeholder="A short reminder or next step"></textarea></label>
       <label>Progress<textarea name="progress" maxlength="300" rows="2" placeholder="For example: Start to read information"></textarea></label>
       <button class="primary" type="submit">Add</button>

@@ -14,7 +14,7 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
-- Optional synchronized to-do list with numbered reordering, high-priority markers, due dates, descriptions, and free-text progress notes
+- Optional synchronized to-do list with numbered reordering, high-priority markers, optional due dates, descriptions, and free-text progress notes
 - Installable phone and desktop app with an account-isolated offline notebook cache
 - Automatic cloud synchronization after reconnecting
 - Work-update structure for completed work and the coming week's plan
