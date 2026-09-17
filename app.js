@@ -678,6 +678,40 @@ function inkPressureSensitivity(block) {
   return Math.min(100, Math.max(0, Number.isFinite(value) ? value : 65));
 }
 
+const LATEX_SYMBOLS = Object.freeze({
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ',
+  iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', omicron: 'ο', pi: 'π',
+  rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+  pm: '±', times: '×', div: '÷', cdot: '·', sum: '∑', prod: '∏', int: '∫', sqrt: '√', infty: '∞',
+  approx: '≈', neq: '≠', leq: '≤', geq: '≥', equiv: '≡', propto: '∝', partial: '∂', nabla: '∇',
+  in: '∈', notin: '∉', subset: '⊂', supset: '⊃', subseteq: '⊆', supseteq: '⊇', cup: '∪', cap: '∩',
+  leftarrow: '←', rightarrow: '→', leftrightarrow: '↔', Leftarrow: '⇐', Rightarrow: '⇒', Leftrightarrow: '⇔',
+  degree: '°', ell: 'ℓ', hbar: 'ℏ', forall: '∀', exists: '∃', neg: '¬', land: '∧', lor: '∨'
+});
+
+function replaceLatexAtCaret(editor, afterDelimiter = false) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.startContainer) || range.startContainer.nodeType !== Node.TEXT_NODE) return false;
+  const textNode = range.startContainer;
+  const beforeCaret = textNode.data.slice(0, range.startOffset);
+  const match = beforeCaret.match(afterDelimiter ? /\\([A-Za-z]+)(\s)$/ : /\\([A-Za-z]+)$/);
+  if (!match) return false;
+  const symbol = LATEX_SYMBOLS[match[1]];
+  if (!symbol) return false;
+  const delimiter = afterDelimiter ? match[2] : '';
+  const replacement = `${symbol}${delimiter}`;
+  const replacementStart = range.startOffset - match[0].length;
+  textNode.replaceData(replacementStart, match[0].length, replacement);
+  range.setStart(textNode, replacementStart + replacement.length);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 function renderBlock(block, settings, index, total) {
   const orderControls = `<div class="block-order"><label>Block <input class="block-position" type="number" min="1" max="${total}" value="${index + 1}" aria-label="Block position"></label><button type="button" class="move-block-up" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="move-block-down" ${index === total - 1 ? 'disabled' : ''}>Down</button></div>`;
   if (block.type === 'ink') return `
@@ -702,6 +736,7 @@ function renderBlock(block, settings, index, total) {
         <button type="button" data-command="italic" aria-pressed="false"><i>I</i></button>
         <button type="button" data-command="hiliteColor" aria-pressed="false">Highlight</button>
         <button type="button" data-command="insertUnorderedList" aria-pressed="false">List</button>
+        <span class="latex-hint" title="Complete a supported command with Space, Enter, or Tab">LaTeX: \\mu + Space → μ</span>
         <select class="font-select" aria-label="Font">${fontOptions(settings)}</select>
         <label class="font-size-control">Size <input class="font-size-input" type="number" min="6" max="144" value="17" aria-label="Font size in pixels"><button class="apply-font-size" type="button">Set</button></label>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>
@@ -850,7 +885,17 @@ function bindBlock(element, week, persist, date) {
     selection.removeAllRanges();
     selection.addRange(savedRange);
   };
-  editor.oninput = () => { block.html = editor.innerHTML; persist(); };
+  editor.oninput = () => {
+    replaceLatexAtCaret(editor, true);
+    block.html = editor.innerHTML;
+    persist();
+  };
+  editor.addEventListener('keydown', event => {
+    if ((event.key === ' ' || event.key === 'Enter' || event.key === 'Tab') && replaceLatexAtCaret(editor)) {
+      block.html = editor.innerHTML;
+      persist();
+    }
+  });
   editor.addEventListener('keyup', rememberSelection);
   editor.addEventListener('mouseup', rememberSelection);
   editor.addEventListener('touchend', () => setTimeout(rememberSelection));
