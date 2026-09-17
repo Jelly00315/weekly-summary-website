@@ -422,7 +422,7 @@ function renderTodoPanel(settings) {
   return `<section class="todo-panel" aria-labelledby="todoHeading">
     <header><div><p class="kicker">Current reminders</p><h2 id="todoHeading">To-do list</h2></div><span>${settings.todos.filter(item => item.status !== 'done').length} remaining</span></header>
     <form id="addTodo" class="todo-add-form">
-      <label>Homework or project<input name="title" maxlength="120" required placeholder="What needs to be done?"></label>
+      <label>Task<input name="title" maxlength="120" required placeholder="What needs to be done?"></label>
       <label>Due date<input name="dueDate" type="date" required></label>
       <label>Brief introduction<textarea name="intro" maxlength="300" rows="2" placeholder="A short reminder or next step"></textarea></label>
       <label>Progress<select name="status">${Object.entries(TODO_STATUS_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
@@ -453,7 +453,7 @@ function bindTodoPanel() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const title = String(form.get('title') || '').trim();
-    if (!title) return alert('Please enter a homework or project name.');
+    if (!title) return alert('Please enter a task name.');
     const settings = getSettings();
     settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), status: String(form.get('status') || 'not-started') });
     putSettings(settings);
