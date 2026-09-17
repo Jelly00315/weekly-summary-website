@@ -359,7 +359,7 @@ function renderHome() {
       <header class="masthead">
         <a class="wordmark" href="./">Je<span>Week</span>Summary</a>
         <span class="edition">Work weekly update</span>
-        <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><button id="shareNotebook">Share</button><button id="logout">Log out</button><button id="deleteAccount" class="delete-account">Delete account</button></div>
+        <div class="account-control"><span>${escapeHtml(currentUser?.email || '')}</span><label class="import-backup-button">Import backup<input class="import-backup-input" type="file" accept=".json,application/json"></label><button id="shareNotebook">Share</button><button id="logout">Log out</button><button id="deleteAccount" class="delete-account">Delete account</button></div>
         <div class="paper-control">
           <label>Paper <input id="backgroundColor" type="color" value="${settings.background}"></label>
           <div class="color-history" aria-label="Previous background colors">
@@ -387,6 +387,7 @@ function renderHome() {
   document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
   document.querySelector('#deleteAccount').onclick = deleteAccount;
   document.querySelector('#shareNotebook').onclick = openShareDialog;
+  document.querySelector('.import-backup-input').onchange = importWeekBackup;
   document.querySelectorAll('[data-delete-year]').forEach(button => button.onclick = () => deleteYear(Number(button.dataset.deleteYear)));
   document.querySelectorAll('[data-add-week]').forEach(button => button.onclick = () => addWeek(Number(button.dataset.addWeek)));
   document.querySelectorAll('[data-week-open]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.weekOpen}`; });
@@ -588,6 +589,58 @@ function downloadWeekBackup(date, week) {
   downloadFile(`JeWeekSummary-${iso(date)}.json`, JSON.stringify(backup, null, 2), 'application/json');
 }
 
+function sanitizeImportedWeek(value) {
+  const week = normalizeWeek(value);
+  return {
+    summary: String(week.summary || '').slice(0, 180),
+    blocks: week.blocks.slice(0, 100).map(block => {
+      const color = /^#[0-9a-f]{6}$/i.test(block.color || '') ? block.color : (block.type === 'ink' ? '#24414a' : '#20211e');
+      if (block.type === 'ink') return {
+        id: uid(), type: 'ink', title: String(block.title || 'Handwritten Note').slice(0, 200), color,
+        drawing: /^data:image\/png;base64,/i.test(block.drawing || '') ? block.drawing : '',
+        drawingWidth: Number(block.drawingWidth) || undefined, drawingHeight: Number(block.drawingHeight) || undefined,
+        height: inkHeight(block), paper: block.paper === 'lined' ? 'lined' : 'blank',
+        lineSpacing: inkLineSpacing(block), penWidth: inkPenWidth(block), pressureSensitivity: inkPressureSensitivity(block)
+      };
+      return { id: uid(), type: 'text', title: String(block.title || 'Note').slice(0, 200), color, html: safeRichHtml(block.html || '') };
+    })
+  };
+}
+
+async function importWeekBackup(event) {
+  const input = event.currentTarget;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 50 * 1024 * 1024) return alert('That backup is larger than 50 MB and cannot be imported.');
+
+  let backup;
+  try { backup = JSON.parse(await file.text()); }
+  catch { return alert('This is not a valid JSON backup file.'); }
+  if (!backup || backup.format !== 'JeWeekSummary-week' || backup.version !== 1 || !backup.week) {
+    return alert('This file is not a supported JeWeekSummary week backup.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(backup.weekStart || '')) return alert('The backup does not contain a valid week date.');
+  const parsedDate = new Date(`${backup.weekStart}T12:00:00`);
+  if (Number.isNaN(parsedDate.getTime()) || iso(parsedDate) !== backup.weekStart) return alert('The backup week date is invalid.');
+  const date = monday(parsedDate);
+  const key = iso(date);
+  if (cloudState?.weeks?.[key] && !confirm(`${weekLabel(date)} already has saved content. Replace it with this backup?`)) return;
+
+  const importedWeek = sanitizeImportedWeek(backup.week);
+  const year = weekYear(date);
+  const settings = getSettings();
+  if (!settings.years.includes(year)) settings.years.push(year);
+  const existingKeys = Array.isArray(settings.weekIndex?.[String(year)]) ? settings.weekIndex[String(year)] : [];
+  settings.weekIndex = { ...(settings.weekIndex || {}), [String(year)]: [...new Set([...existingKeys, key])].sort().reverse() };
+  putSettings(settings);
+  putWeek(date, importedWeek);
+  const error = await saveCloudNow();
+  if (error) alert(`The week was restored locally, but cloud synchronization failed: ${error.message}`);
+  else showToast('Backup imported.');
+  location.href = `?week=${key}`;
+}
+
 function printWeek(date) {
   const previousTitle = document.title;
   document.title = `JeWeekSummary-${iso(date)}`;
@@ -633,6 +686,7 @@ function renderWeek(date) {
         <button id="clearCustomCss" class="danger" ${getLocalCss() ? '' : 'disabled'}>Clear CSS</button>
         <button id="downloadPdf" class="export-button">Download PDF</button>
         <button id="downloadBackup" class="export-button">Editable backup</button>
+        <label class="export-button import-backup-button">Import backup<input class="import-backup-input" type="file" accept=".json,application/json"></label>
         <button id="deleteWeek" class="danger">Delete week</button>
         <button id="saveWeek" class="primary">Save update</button>
       </footer>
@@ -796,6 +850,7 @@ function bindWeek(date, week) {
   document.querySelector('#deleteWeek').onclick = () => deleteListedWeek(iso(date));
   document.querySelector('#downloadPdf').onclick = () => printWeek(date);
   document.querySelector('#downloadBackup').onclick = () => downloadWeekBackup(date, week);
+  document.querySelector('.import-backup-input').onchange = importWeekBackup;
   document.querySelector('#fontUpload').onchange = event => uploadFont(event, date);
   document.querySelector('#cssUpload').onchange = event => uploadWeekCss(event, date);
   document.querySelector('#clearCustomCss').onclick = () => {
