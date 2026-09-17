@@ -690,6 +690,14 @@ const LATEX_SYMBOLS = Object.freeze({
   degree: '°', ell: 'ℓ', hbar: 'ℏ', forall: '∀', exists: '∃', neg: '¬', land: '∧', lor: '∨'
 });
 
+const SUPERSCRIPT_SYMBOLS = Object.freeze({ '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾', n: 'ⁿ', i: 'ⁱ' });
+const SUBSCRIPT_SYMBOLS = Object.freeze({ '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉', '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎', a: 'ₐ', e: 'ₑ', h: 'ₕ', i: 'ᵢ', j: 'ⱼ', k: 'ₖ', l: 'ₗ', m: 'ₘ', n: 'ₙ', o: 'ₒ', p: 'ₚ', r: 'ᵣ', s: 'ₛ', t: 'ₜ', x: 'ₓ' });
+
+function scriptSymbols(value, symbols) {
+  const converted = [...value].map(character => symbols[character]);
+  return converted.every(Boolean) ? converted.join('') : null;
+}
+
 function replaceLatexAtCaret(editor, afterDelimiter = false) {
   const selection = window.getSelection();
   if (!selection.rangeCount || !selection.isCollapsed) return false;
@@ -697,14 +705,34 @@ function replaceLatexAtCaret(editor, afterDelimiter = false) {
   if (!editor.contains(range.startContainer) || range.startContainer.nodeType !== Node.TEXT_NODE) return false;
   const textNode = range.startContainer;
   const beforeCaret = textNode.data.slice(0, range.startOffset);
-  const match = beforeCaret.match(afterDelimiter ? /\\([A-Za-z]+)(\s)$/ : /\\([A-Za-z]+)$/);
-  if (!match) return false;
-  const symbol = LATEX_SYMBOLS[match[1]];
-  if (!symbol) return false;
-  const delimiter = afterDelimiter ? match[2] : '';
-  const replacement = `${symbol}${delimiter}`;
-  const replacementStart = range.startOffset - match[0].length;
-  textNode.replaceData(replacementStart, match[0].length, replacement);
+  const delimiterMatch = afterDelimiter ? beforeCaret.match(/(\s)$/) : null;
+  if (afterDelimiter && !delimiterMatch) return false;
+  const delimiter = delimiterMatch ? delimiterMatch[1] : '';
+  const expression = delimiter ? beforeCaret.slice(0, -delimiter.length) : beforeCaret;
+  let match = expression.match(/\\sqrt\{([^{}]+)\}$/);
+  let replacement;
+
+  if (match) {
+    const command = match[1].match(/^\\([A-Za-z]+)$/);
+    const radicand = command && LATEX_SYMBOLS[command[1]] ? LATEX_SYMBOLS[command[1]] : match[1];
+    replacement = radicand.length === 1 ? `√${radicand}` : `√(${radicand})`;
+  } else {
+    match = expression.match(/\^(?:\{([0-9+\-=()ni]+)\}|([0-9+\-=()ni]))$/);
+    if (match) replacement = scriptSymbols(match[1] || match[2], SUPERSCRIPT_SYMBOLS);
+  }
+  if (!replacement) {
+    match = expression.match(/_(?:\{([0-9+\-=()aehijklmnoprstx]+)\}|([0-9+\-=()aehijklmnoprstx]))$/);
+    if (match) replacement = scriptSymbols(match[1] || match[2], SUBSCRIPT_SYMBOLS);
+  }
+  if (!replacement) {
+    match = expression.match(/\\([A-Za-z]+)$/);
+    if (match) replacement = LATEX_SYMBOLS[match[1]];
+  }
+  if (!match || !replacement) return false;
+  replacement += delimiter;
+  const matchedLength = match[0].length + delimiter.length;
+  const replacementStart = range.startOffset - matchedLength;
+  textNode.replaceData(replacementStart, matchedLength, replacement);
   range.setStart(textNode, replacementStart + replacement.length);
   range.collapse(true);
   selection.removeAllRanges();
@@ -736,7 +764,7 @@ function renderBlock(block, settings, index, total) {
         <button type="button" data-command="italic" aria-pressed="false"><i>I</i></button>
         <button type="button" data-command="hiliteColor" aria-pressed="false">Highlight</button>
         <button type="button" data-command="insertUnorderedList" aria-pressed="false">List</button>
-        <span class="latex-hint" title="Complete a supported command with Space, Enter, or Tab">LaTeX: \\mu + Space → μ</span>
+        <span class="latex-hint" title="Complete notation with Space, Enter, or Tab">Math: \\mu · R^2 · \\sqrt{R} + Space</span>
         <select class="font-select" aria-label="Font">${fontOptions(settings)}</select>
         <label class="font-size-control">Size <input class="font-size-input" type="number" min="6" max="144" value="17" aria-label="Font size in pixels"><button class="apply-font-size" type="button">Set</button></label>
         <label>Text <input class="block-color" type="color" value="${block.color || '#20211e'}"></label>

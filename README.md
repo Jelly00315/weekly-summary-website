@@ -25,7 +25,7 @@ Features:
 - Resizable handwriting paper with optional horizontal lines and adjustable spacing
 - Add, rename, recolor, and safely delete individual blocks
 - Toggleable bold, italic, and highlight formatting for selected text, plus lists, free text sizing, font selection (including 宋体/SimSun), and device-local font upload
-- LaTeX-style Unicode symbol shortcuts in typing blocks, such as `\mu` + Space → `μ`
+- LaTeX-style Unicode symbol shortcuts in typing blocks, including `\mu` → `μ`, `R^2` → `R²`, `x_1` → `x₁`, and `\sqrt{R}` → `√R`
 - Device-local CSS upload for custom week-page appearance, with external CSS requests blocked
 - Per-block Markdown export, full-week PDF printing, and editable JSON week backups
 - Background color picker with the three previously selected colors
