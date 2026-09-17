@@ -14,6 +14,7 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
+- Optional synchronized to-do list on the contents page with due dates, descriptions, progress states, and reminders
 - Installable phone and desktop app with an account-isolated offline notebook cache
 - Automatic cloud synchronization after reconnecting
 - Work-update structure for completed work and the coming week's plan

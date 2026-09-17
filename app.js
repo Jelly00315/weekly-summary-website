@@ -85,7 +85,24 @@ function defaultSettings() {
     highlightedWeeks: [],
     fontName: 'Times New Roman',
     headline: 'Work, week by week.',
-    intro: 'A working record of progress, results, questions, and the plan for the week ahead.'
+    intro: 'A working record of progress, results, questions, and the plan for the week ahead.',
+    todoVisible: false,
+    todos: []
+  };
+}
+
+function normalizeTodoSettings(settings) {
+  const statuses = new Set(['not-started', 'in-progress', 'waiting', 'done']);
+  return {
+    ...settings,
+    todoVisible: Boolean(settings.todoVisible),
+    todos: Array.isArray(settings.todos) ? settings.todos.filter(item => item && typeof item === 'object').map(item => ({
+      id: /^[a-z0-9-]+$/i.test(item.id || '') ? item.id : uid(),
+      title: String(item.title || '').slice(0, 120),
+      dueDate: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || '') ? item.dueDate : '',
+      intro: String(item.intro || '').slice(0, 300),
+      status: statuses.has(item.status) ? item.status : 'not-started'
+    })) : []
   };
 }
 
@@ -93,12 +110,12 @@ function getSettings() {
   if (cloudState) {
     const settings = { ...defaultSettings(), ...(cloudState.settings || {}) };
     if (settings.headline === 'Research, week by week.') settings.headline = 'Work, week by week.';
-    return settings;
+    return normalizeTodoSettings(settings);
   }
   try {
     const settings = { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
     if (settings.headline === 'Research, week by week.') settings.headline = 'Work, week by week.';
-    return settings;
+    return normalizeTodoSettings(settings);
   }
   catch { return defaultSettings(); }
 }
@@ -371,7 +388,8 @@ function renderHome() {
         <p class="kicker">Work weekly notebook / contents</p>
         <h1 contenteditable="true" id="headline">${settings.headline}</h1>
         <p class="intro" contenteditable="true" id="intro">${settings.intro}</p>
-        <div class="year-actions"><button id="addYear" class="primary">+ Add year</button></div>
+        <div class="year-actions"><button id="addYear" class="primary">+ Add year</button><button id="toggleTodos" class="todo-toggle">${settings.todoVisible ? 'Hide to-do list' : 'Show to-do list'}</button></div>
+        ${settings.todoVisible ? renderTodoPanel(settings) : ''}
       </section>
       <section class="contents">
         ${years.map(year => renderYear(year)).join('')}
@@ -384,6 +402,7 @@ function renderHome() {
   document.querySelectorAll('.color-chip').forEach(button => button.onclick = () => selectBackground(button.dataset.color));
   document.querySelectorAll('[data-delete-color]').forEach(button => button.onclick = () => deleteSavedColor(button.dataset.deleteColor));
   document.querySelector('#addYear').onclick = addYear;
+  document.querySelector('#toggleTodos').onclick = toggleTodoPanel;
   document.querySelector('#logout').onclick = () => db.auth.signOut().then(() => location.href = './');
   document.querySelector('#deleteAccount').onclick = deleteAccount;
   document.querySelector('#shareNotebook').onclick = openShareDialog;
@@ -393,6 +412,71 @@ function renderHome() {
   document.querySelectorAll('[data-week-open]').forEach(button => button.onclick = () => { location.href = `?week=${button.dataset.weekOpen}`; });
   document.querySelectorAll('[data-remove-week]').forEach(button => button.onclick = () => deleteListedWeek(button.dataset.removeWeek));
   document.querySelectorAll('[data-highlight-week]').forEach(button => button.onclick = () => toggleWeekHighlight(button.dataset.highlightWeek));
+  if (settings.todoVisible) bindTodoPanel();
+}
+
+const TODO_STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progress', waiting: 'Waiting', done: 'Done' };
+
+function renderTodoPanel(settings) {
+  const today = iso(new Date());
+  return `<section class="todo-panel" aria-labelledby="todoHeading">
+    <header><div><p class="kicker">Current reminders</p><h2 id="todoHeading">To-do list</h2></div><span>${settings.todos.filter(item => item.status !== 'done').length} remaining</span></header>
+    <form id="addTodo" class="todo-add-form">
+      <label>Homework or project<input name="title" maxlength="120" required placeholder="What needs to be done?"></label>
+      <label>Due date<input name="dueDate" type="date" required></label>
+      <label>Brief introduction<textarea name="intro" maxlength="300" rows="2" placeholder="A short reminder or next step"></textarea></label>
+      <label>Progress<select name="status">${Object.entries(TODO_STATUS_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
+      <button class="primary" type="submit">+ Add task</button>
+    </form>
+    <div class="todo-list">${settings.todos.length ? settings.todos.map(item => {
+      const timing = item.status !== 'done' && item.dueDate && item.dueDate < today ? ' overdue' : item.status !== 'done' && item.dueDate === today ? ' due-today' : '';
+      return `<article class="todo-item status-${item.status}${timing}" data-todo-id="${item.id}">
+        <input class="todo-title" data-todo-field="title" maxlength="120" value="${escapeHtml(item.title)}" aria-label="Task title">
+        <input data-todo-field="dueDate" type="date" value="${item.dueDate}" aria-label="Due date">
+        <textarea data-todo-field="intro" maxlength="300" rows="2" aria-label="Brief introduction">${escapeHtml(item.intro)}</textarea>
+        <select data-todo-field="status" aria-label="Progress status">${Object.entries(TODO_STATUS_LABELS).map(([value, label]) => `<option value="${value}"${item.status === value ? ' selected' : ''}>${label}</option>`).join('')}</select>
+        <button type="button" class="delete-todo" aria-label="Delete ${escapeHtml(item.title || 'task')}">Delete</button>
+      </article>`;
+    }).join('') : '<p class="todo-empty">No reminders yet. Add a homework item or project above.</p>'}</div>
+  </section>`;
+}
+
+function toggleTodoPanel() {
+  const settings = getSettings();
+  settings.todoVisible = !settings.todoVisible;
+  putSettings(settings);
+  renderHome();
+}
+
+function bindTodoPanel() {
+  document.querySelector('#addTodo').onsubmit = event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get('title') || '').trim();
+    if (!title) return alert('Please enter a homework or project name.');
+    const settings = getSettings();
+    settings.todos.push({ id: uid(), title, dueDate: String(form.get('dueDate') || ''), intro: String(form.get('intro') || '').trim(), status: String(form.get('status') || 'not-started') });
+    putSettings(settings);
+    renderHome();
+  };
+  document.querySelectorAll('[data-todo-field]').forEach(control => control.onchange = () => {
+    const itemElement = control.closest('[data-todo-id]');
+    const settings = getSettings();
+    const item = settings.todos.find(todo => todo.id === itemElement.dataset.todoId);
+    if (!item) return;
+    item[control.dataset.todoField] = control.value;
+    putSettings(settings);
+    renderHome();
+  });
+  document.querySelectorAll('.delete-todo').forEach(button => button.onclick = () => {
+    const itemId = button.closest('[data-todo-id]').dataset.todoId;
+    const settings = getSettings();
+    const item = settings.todos.find(todo => todo.id === itemId);
+    if (!item || !confirm(`Delete “${item.title || 'this task'}”? This cannot be undone.`)) return;
+    settings.todos = settings.todos.filter(todo => todo.id !== itemId);
+    putSettings(settings);
+    renderHome();
+  });
 }
 
 function renderYear(year) {
