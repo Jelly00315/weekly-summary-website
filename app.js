@@ -696,6 +696,52 @@ function htmlToMarkdown(html) {
   return [...template.content.childNodes].map(convert).join('').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function markdownToHtml(markdown) {
+  const inline = value => escapeHtml(value)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/==([^=\n]+)==/g, '<mark>$1</mark>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+  const output = [];
+  let paragraph = [];
+  let listType = '';
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    output.push(`<p>${inline(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (!listType) return;
+    output.push(`</${listType}>`);
+    listType = '';
+  };
+  lines.forEach(line => {
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (heading) {
+      flushParagraph(); closeList();
+      const level = heading[1].length;
+      output.push(`<h${level}>${inline(heading[2].trim())}</h${level}>`);
+    } else if (unordered || ordered) {
+      flushParagraph();
+      const nextType = unordered ? 'ul' : 'ol';
+      if (listType !== nextType) { closeList(); output.push(`<${nextType}>`); listType = nextType; }
+      output.push(`<li>${inline((unordered || ordered)[1].trim())}</li>`);
+    } else if (!line.trim()) {
+      flushParagraph(); closeList();
+    } else {
+      closeList();
+      paragraph.push(line.trim());
+    }
+  });
+  flushParagraph(); closeList();
+  return safeRichHtml(output.join(''));
+}
+
 function downloadWeekBackup(date, week) {
   const backup = { format: 'JeWeekSummary-week', version: 1, exportedAt: new Date().toISOString(), weekStart: iso(date), week };
   downloadFile(`JeWeekSummary-${iso(date)}.json`, JSON.stringify(backup, null, 2), 'application/json');
@@ -923,7 +969,7 @@ function renderBlock(block, settings, index, total) {
       <header class="block-header">
         ${orderControls}
         <input class="block-title" value="${escapeHtml(block.title || 'Note')}" aria-label="Block title">
-        <div class="block-tools"><button class="download-markdown">Download .md</button><button class="remove-block">Delete</button></div>
+        <div class="block-tools"><label class="import-markdown-button">Import .md<input class="import-markdown-input" type="file" accept=".md,text/markdown,text/plain"></label><button class="download-markdown">Download .md</button><button class="remove-block">Delete</button></div>
       </header>
       <div class="toolbar">
         <button type="button" data-command="bold" aria-pressed="false"><b>B</b></button>
@@ -1062,12 +1108,42 @@ function bindBlock(element, week, persist, date) {
     };
     return;
   }
+  const editor = element.querySelector('.text-editor');
   element.querySelector('.download-markdown').onclick = () => {
     const title = block.title || 'Note';
     const markdown = `# ${title}\n\n${htmlToMarkdown(block.html || '')}\n`;
     downloadFile(`${iso(date)}-${safeFilename(title)}.md`, markdown, 'text/markdown;charset=utf-8');
   };
-  const editor = element.querySelector('.text-editor');
+  element.querySelector('.import-markdown-input').onchange = async event => {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      input.value = '';
+      return alert('Please choose a Markdown file smaller than 1 MB.');
+    }
+    if (editor.textContent.trim() && !confirm('Replace the content of this typing block with the imported Markdown file?')) {
+      input.value = '';
+      return;
+    }
+    try {
+      let markdown = await file.text();
+      const titleMatch = markdown.match(/^\s*#\s+([^\n]+)\n?/);
+      if (titleMatch) {
+        block.title = titleMatch[1].trim().slice(0, 200) || block.title;
+        element.querySelector('.block-title').value = block.title;
+        markdown = markdown.slice(titleMatch[0].length);
+      }
+      block.html = markdownToHtml(markdown);
+      editor.innerHTML = block.html;
+      persist();
+      showToast('Markdown imported.');
+    } catch {
+      alert('This Markdown file could not be read.');
+    } finally {
+      input.value = '';
+    }
+  };
   let savedRange = null;
   const rememberSelection = () => {
     const selection = window.getSelection();
