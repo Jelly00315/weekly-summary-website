@@ -14,6 +14,7 @@ Open `index.html` in a modern browser. Your summaries, entries, and handwritten 
 
 Features:
 
+- Fluid phone layout that automatically fits narrow screens, safe areas, and touch controls
 - Optional synchronized to-do list with numbered reordering, high-priority markers, optional due dates, descriptions, and free-text progress notes
 - Installable phone and desktop app with an account-isolated offline notebook cache
 - Automatic cloud synchronization after reconnecting
